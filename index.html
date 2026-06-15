@@ -57,7 +57,7 @@
         
         .bottom-btn-group { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 448px; display: flex; flex-direction: column; z-index: 100; background-color: #111111; border-top: 1px solid #333333; padding-bottom: 36px; transition: opacity 0.2s ease; }
         .bottom-btn-group::after { content: ''; position: absolute; left: 0; right: 0; bottom: -100px; height: 100px; background-color: #111111; }
-        .bottom-btn-group-inner { display: flex; width: 100%; position: relative; }
+        .bottom-btn-group-inner { display: flex; width: 100%; position: relative; padding: 0 12px; box-sizing: border-box; }
         button.large-bottom-btn { height: 52px !important; font-size: 15px !important; font-weight: bold !important; border-radius: 0 !important; box-shadow: none; flex: 1; display: flex; align-items: center; justify-content: center; padding: 0; border: none !important; background-color: transparent; color: #ffffff; }
 
         .hidden { display: none !important; }
@@ -69,7 +69,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 52px;
+            height: 62px;
             cursor: pointer;
             font-size: 14px;
             font-weight: bold;
@@ -486,76 +486,11 @@
                     <div id="wpProgressFill" style="height:100%; width:0%; background:#ffffff; border-radius:8px; transition:width 0.05s; pointer-events:none;"></div>
                     <div style="position:absolute; top:0; bottom:0; left:25%; width:1px; background:rgba(0,0,0,0.3); pointer-events:none;"></div>
                     <div style="position:absolute; top:0; bottom:0; left:50%; width:1px; background:rgba(0,0,0,0.3); pointer-events:none;"></div>
-                    <div style="position:absolute; top:0; bottom:0; left:75%; width:1px; background:rgba(0,0,0,0.3); pointer-events:none;"></div>
+                    <div style="position:absolute; top:0; bottom:0; left:75%; width:1px; background:rgba(0,0,0,0.3); pointer-events:none;" id="wpProgressTick75"></div>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- 計價計算機彈窗 -->
-    <div id="calcModal" style="display:none; position:fixed; inset:0; background:#000000; z-index:300; align-items:center; justify-content:center;">
-        <div id="calcModalInner" style="background:#111111; width:100%; height:100%; box-sizing:border-box; padding:14px; display:flex; flex-direction:column; gap:8px;">
-            <div style="display:flex; flex-direction:column; gap:6px; flex:1; min-height:0;">
-                    <div style="display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
-                        <span style="font-size:12px; font-weight:bold; color:#aaaaaa;">月份金額（按 ↵ 新增）</span>
-                        <button onclick="_calcClearEntries()" style="background:none; border:none; color:#D9006C; font-size:12px; font-weight:bold;">清空</button>
-                    </div>
-                    <div id="calcEntriesList" style="display:flex; flex-direction:column; gap:4px; overflow-y:auto; flex:1; min-height:0;"></div>
-                    <div style="display:flex; align-items:center; font-size:13px; font-weight:bold; border-top:1px solid #444444; padding-top:6px; flex-shrink:0;">
-                        <span style="color:#888888; width:28px;">總計</span>
-                        <span id="calcTotalUntaxed" style="flex:1; text-align:right; color:#ffffff;">0</span>
-                        <span id="calcTotalTax" style="flex:1; text-align:right; color:#D9006C;">0</span>
-                        <span id="calcTotalTaxed" style="flex:1; text-align:right; color:#7ec8e3;">0</span>
-                        <span style="margin-left:8px; width:14px;"></span>
-                    </div>
-                </div>
-                <div style="background-color:#111111; border:1px solid #555555; border-radius:8px; padding:8px 10px; display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
-                    <!-- 計算中數字 -->
-                    <div id="calcExprDisplay" style="text-align:right; font-size:22px; font-family:monospace; color:#ffffff; min-height:28px; word-break:break-all; padding-bottom:4px; border-bottom:1px solid #333;">0</div>
-                    <!-- 三列：按鈕｜金額 -->
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; align-items:center;">
-                        <!-- 未稅按鈕 | 未稅金額 -->
-                        <button id="calcBtnUntaxed" onclick="_calcSetAmountType('untaxed')" style="padding:7px 0; border-radius:8px; font-size:13px; font-weight:bold; border:none; text-align:center;">未稅</button>
-                        <div id="calcUntaxedVal" style="color:#ffffff; font-weight:bold; text-align:right; font-size:14px;">—</div>
-                        <!-- 稅率輸入框 | 稅金 -->
-                        <div style="display:flex; align-items:center; gap:4px;">
-                            <input id="calcTaxRateInput" type="number" value="5" oninput="_calcSetTaxRate(this.value)" style="width:52px; text-align:center; border:1px solid #555555; border-radius:8px; padding:6px 4px; font-size:13px; background-color:#2a2a2a; color:#ffffff; -webkit-user-select:text; user-select:text;">
-                            <span style="font-size:13px; color:#aaaaaa;">%</span>
-                        </div>
-                        <div id="calcTaxVal" style="color:#D9006C; font-weight:bold; text-align:right; font-size:14px;">—</div>
-                        <!-- 含稅按鈕 | 含稅金額 -->
-                        <button id="calcBtnTaxed" onclick="_calcSetAmountType('taxed')" style="padding:7px 0; border-radius:8px; font-size:13px; font-weight:bold; border:none; text-align:center;">含稅</button>
-                        <div id="calcTaxedVal" style="color:#7ec8e3; font-weight:bold; text-align:right; font-size:14px;">—</div>
-                    </div>
-                </div>
-                <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:6px; flex-shrink:0;">
-                    <button onclick="_calcClear()" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#D9006C; color:#ffffff;">C</button>
-                    <button onclick="_calcBackspace()" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#D9006C; color:#ffffff;">⌫</button>
-                    <button onclick="_calcPressOp('÷')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#2a2a2a; color:#7ec8e3;">÷</button>
-                    <button onclick="_calcPressOp('×')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#2a2a2a; color:#7ec8e3;">×</button>
-
-                    <button onclick="_calcPressDigit('7')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#333333; color:#ffffff;">7</button>
-                    <button onclick="_calcPressDigit('8')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#333333; color:#ffffff;">8</button>
-                    <button onclick="_calcPressDigit('9')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#333333; color:#ffffff;">9</button>
-                    <button onclick="_calcPressOp('−')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#2a2a2a; color:#7ec8e3;">−</button>
-
-                    <button onclick="_calcPressDigit('4')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#333333; color:#ffffff;">4</button>
-                    <button onclick="_calcPressDigit('5')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#333333; color:#ffffff;">5</button>
-                    <button onclick="_calcPressDigit('6')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#333333; color:#ffffff;">6</button>
-                    <button onclick="_calcPressOp('+')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#2a2a2a; color:#7ec8e3;">+</button>
-
-                    <button onclick="_calcPressDigit('1')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#333333; color:#ffffff;">1</button>
-                    <button onclick="_calcPressDigit('2')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#333333; color:#ffffff;">2</button>
-                    <button onclick="_calcPressDigit('3')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#333333; color:#ffffff;">3</button>
-                    <button onclick="_calcEnter()" style="grid-row: span 2; height:auto; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#f0a500; color:#000000;">↵</button>
-
-                    <button onclick="_calcPressDigit('0')" style="grid-column: span 2; height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#333333; color:#ffffff;">0</button>
-                    <button onclick="_calcPressDigit('.')" style="height:56px; border-radius:8px; border:none; font-size:32px; font-weight:bold; background-color:#333333; color:#ffffff;">.</button>
-                </div>
-        </div>
-    </div>
-
-
 
         <!-- 新增計價表彈窗 -->
         <div id="addBlockModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:300; align-items:center; justify-content:center;" onclick="if(event.target===this)_tryCloseAddBlockModal()">
@@ -658,9 +593,6 @@
                 </div>
                 <div style="border-top:1px solid #444444; padding-top:10px; margin-top:4px;">
                     <button onclick="navigateTo('lawref')" class="btn-slate" style="width:100%; padding:12px; font-size:14px; font-weight:bold; border-radius:8px; border:1px solid #555555;">設置標準</button>
-                </div>
-                <div style="border-top:1px solid #444444; padding-top:10px; margin-top:4px;">
-                    <button onclick="_openCalcModal()" class="btn-slate" style="width:100%; padding:12px; font-size:14px; font-weight:bold; border-radius:8px; border:1px solid #555555;">計價計算機</button>
                 </div>
                 <div style="border-top:1px solid #444444; padding-top:10px; margin-top:4px;">
                     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
@@ -1026,292 +958,6 @@
             } catch (e) {}
         }
 
-        // ── 計價計算機 ──
-        function _openCalcModal() {
-            _calcRender(true);
-            document.getElementById('calcModal').style.display = 'flex';
-        }
-
-        function _closeCalcModal() {
-            document.getElementById('calcModal').style.display = 'none';
-        }
-
-        const _CALC_OP_MAP = { '×': '*', '÷': '/', '−': '-' };
-
-        function _calcSafeEval(expr) {
-            if (!expr) return NaN;
-            let jsExpr = expr;
-            Object.keys(_CALC_OP_MAP).forEach(function(k) {
-                jsExpr = jsExpr.split(k).join(_CALC_OP_MAP[k]);
-            });
-            jsExpr = jsExpr.replace(/[+\-*/.]+$/, '');
-            if (!/^[0-9+\-*/.() ]*$/.test(jsExpr) || jsExpr === '') return NaN;
-            try {
-                const val = Function('"use strict"; return (' + jsExpr + ')')();
-                if (typeof val !== 'number' || !isFinite(val)) return NaN;
-                return val;
-            } catch (e) {
-                return NaN;
-            }
-        }
-
-        function _calcFmt(n) {
-            if (n === null || n === undefined || isNaN(n)) return '—';
-            return n.toLocaleString('zh-TW', { maximumFractionDigits: 0 });
-        }
-
-        function _loadCalcState() {
-            try {
-                const raw = localStorage.getItem('_calcState');
-                if (raw) {
-                    const parsed = JSON.parse(raw);
-                    window._calcState = {
-                        expr: '',
-                        taxRate: (typeof parsed.taxRate === 'number') ? parsed.taxRate : 5,
-                        amountType: parsed.amountType === 'taxed' ? 'taxed' : 'untaxed',
-                        entries: Array.isArray(parsed.entries) ? parsed.entries : []
-                    };
-                } else {
-                    window._calcState = { expr: '', taxRate: 5, amountType: 'untaxed', entries: [] };
-                }
-            } catch (e) {
-                window._calcState = { expr: '', taxRate: 5, amountType: 'untaxed', entries: [] };
-            }
-        }
-
-        function _saveCalcState() {
-            try {
-                const s = window._calcState;
-                localStorage.setItem('_calcState', JSON.stringify({
-                    taxRate: s.taxRate,
-                    amountType: s.amountType,
-                    entries: s.entries
-                }));
-            } catch (e) {}
-        }
-
-        function _calcPressDigit(d) {
-            const s = window._calcState;
-            const parts = s.expr.split(/[+\-×÷]/);
-            const lastNumber = parts[parts.length - 1];
-            if (d === '.' && lastNumber.indexOf('.') !== -1) return;
-            s.expr += d;
-            _calcRender();
-        }
-
-        function _calcPressOp(op) {
-            const s = window._calcState;
-            if (s.expr === '') return;
-            const last = s.expr[s.expr.length - 1];
-            if (['+', '−', '×', '÷'].indexOf(last) !== -1) {
-                s.expr = s.expr.slice(0, -1) + op;
-            } else {
-                s.expr += op;
-            }
-            _calcRender();
-        }
-
-        function _calcBackspace() {
-            const s = window._calcState;
-            s.expr = s.expr.slice(0, -1);
-            _calcRender();
-        }
-
-        function _calcClear() {
-            window._calcState.expr = '';
-            _calcRender(true);
-        }
-
-        function _calcSetAmountType(type) {
-            window._calcState.amountType = type;
-            _saveCalcState();
-            _calcRender(true);
-        }
-
-        function _calcSetTaxRate(val) {
-            const n = Number(val);
-            window._calcState.taxRate = isNaN(n) ? 0 : n;
-            _saveCalcState();
-            _calcRender(true);
-        }
-
-        function _calcCurrentValues() {
-            const s = window._calcState;
-            const raw = _calcSafeEval(s.expr);
-            const hasResult = s.expr !== '' && !isNaN(raw);
-            if (!hasResult) return { hasResult: false, untaxed: null, taxed: null };
-            const r = s.taxRate / 100;
-            let untaxed, taxed;
-            if (s.amountType === 'untaxed') {
-                untaxed = raw;
-                taxed = raw * (1 + r);
-            } else {
-                taxed = raw;
-                untaxed = raw / (1 + r);
-            }
-            return { hasResult: true, untaxed: untaxed, taxed: taxed };
-        }
-
-        function _calcEnter() {
-            const v = _calcCurrentValues();
-            if (!v.hasResult) return;
-            window._calcState.entries.push({ id: Date.now(), untaxed: v.untaxed, taxed: v.taxed });
-            window._calcState.expr = '';
-            _saveCalcState();
-            _calcRender(true);
-            _calcScrollToBottom();
-        }
-
-        function _calcRemoveEntry(id) {
-            const s = window._calcState;
-            s.entries = s.entries.filter(function(e) { return e.id !== id; });
-            _saveCalcState();
-            _calcRender(true);
-        }
-
-        function _calcClearEntries() {
-            if (!window._calcState.entries.length) return;
-            window._calcState.entries = [];
-            _saveCalcState();
-            _calcRender(true);
-        }
-
-        function _calcScrollToBottom() {
-            const list = document.getElementById('calcEntriesList');
-            if (list) {
-                requestAnimationFrame(function() {
-                    list.scrollTop = list.scrollHeight;
-                });
-            }
-        }
-
-        var _calcLastEntriesJson = null;
-
-        function _calcRender(fullRedraw) {
-            const s = window._calcState;
-            if (!s) return;
-
-            // 永遠更新：表達式顯示
-            const exprEl = document.getElementById('calcExprDisplay');
-            if (exprEl) {
-                // 在最後一個數字上加逗號，運算符保持原樣
-                const rawExpr = s.expr === '' ? '0' : s.expr;
-                const fmtExpr = rawExpr.replace(/(\d+(\.\d*)?)/g, function(m) {
-                    const parts = m.split('.');
-                    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-                    return parts.join('.');
-                });
-                exprEl.textContent = fmtExpr;
-            }
-
-            // 永遠更新：當前計算結果
-            const v = _calcCurrentValues();
-            const untaxedEl = document.getElementById('calcUntaxedVal');
-            const taxEl = document.getElementById('calcTaxVal');
-            const taxedEl = document.getElementById('calcTaxedVal');
-            if (untaxedEl) untaxedEl.textContent = v.hasResult ? _calcFmt(v.untaxed) : '—';
-            if (taxEl) taxEl.textContent = v.hasResult ? _calcFmt(v.taxed - v.untaxed) : '—';
-            if (taxedEl) taxedEl.textContent = v.hasResult ? _calcFmt(v.taxed) : '—';
-
-            if (fullRedraw) {
-                // 只在需要時更新：稅率、按鈕狀態、entries 列表、合計
-                const rateInput = document.getElementById('calcTaxRateInput');
-                if (rateInput && Number(rateInput.value) !== s.taxRate) rateInput.value = s.taxRate;
-
-                const btnUntaxed = document.getElementById('calcBtnUntaxed');
-                const btnTaxed = document.getElementById('calcBtnTaxed');
-                if (btnUntaxed && btnTaxed) {
-                    btnUntaxed.style.backgroundColor = s.amountType === 'untaxed' ? '#7ec8e3' : 'transparent';
-                    btnUntaxed.style.color = s.amountType === 'untaxed' ? '#000000' : '#aaaaaa';
-                    btnTaxed.style.backgroundColor = s.amountType === 'taxed' ? '#7ec8e3' : 'transparent';
-                    btnTaxed.style.color = s.amountType === 'taxed' ? '#000000' : '#aaaaaa';
-                }
-
-                // entries 列表：只在內容有變時重建
-                const entriesJson = JSON.stringify(s.entries);
-                const listEl = document.getElementById('calcEntriesList');
-                if (listEl && entriesJson !== _calcLastEntriesJson) {
-                    _calcLastEntriesJson = entriesJson;
-                    if (!s.entries.length) {
-                        listEl.innerHTML = '<div style="text-align:center; color:#666666; font-size:12px; padding:8px 0;">尚無資料</div>';
-                    } else {
-                        let html = '';
-                        s.entries.forEach(function(e, i) {
-                            html += '<div style="display:flex; align-items:center; font-size:13px; background-color:#2a2a2a; border-radius:8px; padding:6px 10px;">' +
-                                '<span style="color:#888888; width:28px;">#' + (i + 1) + '</span>' +
-                                '<span style="flex:1; text-align:right; color:#ffffff;">' + _calcFmt(e.untaxed) + '</span>' +
-                                '<span style="flex:1; text-align:right; color:#D9006C;">' + _calcFmt(e.taxed - e.untaxed) + '</span>' +
-                                '<span style="flex:1; text-align:right; color:#7ec8e3;">' + _calcFmt(e.taxed) + '</span>' +
-                                '<span onclick="_calcRemoveEntry(' + e.id + ')" style="margin-left:8px; color:#D9006C; font-weight:bold; cursor:pointer;">✕</span>' +
-                                '</div>';
-                        });
-                        listEl.innerHTML = html;
-                    }
-                }
-
-                const totalUntaxedEl = document.getElementById('calcTotalUntaxed');
-                const totalTaxEl = document.getElementById('calcTotalTax');
-                const totalTaxedEl = document.getElementById('calcTotalTaxed');
-                if (totalUntaxedEl && totalTaxEl && totalTaxedEl) {
-                    let totalUntaxed = 0, totalTaxed = 0;
-                    s.entries.forEach(function(e) { totalUntaxed += e.untaxed; totalTaxed += e.taxed; });
-                    totalUntaxedEl.textContent = _calcFmt(totalUntaxed);
-                    totalTaxEl.textContent = _calcFmt(totalTaxed - totalUntaxed);
-                    totalTaxedEl.textContent = _calcFmt(totalTaxed);
-                }
-            }
-        }
-
-        function saveScriptUrl() {
-            const url = document.getElementById('inputScriptUrl').value.trim();
-            if (!db.config) db.config = { scriptUrl: '' };
-            db.config.scriptUrl = url;
-            saveToLocalStorage();
-        }
-
-        function enterScriptUrlEdit() {
-            const ta = document.getElementById('inputScriptUrl');
-            ta.disabled = false;
-            ta.style.backgroundColor = '#1e1e1e';
-            ta.style.color = '';
-            ta.style.webkitUserSelect = 'text';
-            ta.style.userSelect = 'text';
-            ta.style.whiteSpace = 'pre-wrap';
-            ta.style.height = 'auto';
-            ta.style.height = ta.scrollHeight + 'px';
-        }
-
-        function exitScriptUrlEdit() {
-            saveScriptUrl();
-            const ta = document.getElementById('inputScriptUrl');
-            ta.disabled = true;
-            ta.style.backgroundColor = '#1e1e1e';
-            ta.style.color = '#888888';
-            ta.style.webkitUserSelect = 'none';
-            ta.style.userSelect = 'none';
-            ta.style.whiteSpace = 'nowrap';
-            ta.style.height = '36px';
-        }
-
-        function updateCartBadge() {
-            const count = Object.keys(cart).length;
-            const bottomEl = document.getElementById('cartCountBottom');
-            if (bottomEl) bottomEl.innerText = count;
-            const headerEl = document.getElementById('cartCountHeader');
-            if (headerEl) headerEl.innerText = count;
-        }
-
-        function clearOnlyOrder() {
-            if (confirm('確定要「清除目前的訂購清單」嗎？')) {
-                cart = {};
-                updateCartBadge();
-                if (document.getElementById('globalSearchBar')) document.getElementById('globalSearchBar').value = '';
-                if (currentState.page === 'categories') renderCategories();
-                else if (currentState.page === 'items') renderItemsInline();
-                else if (currentState.page === 'cart') { renderCart(); return; }
-            }
-        }
-
         function importJSON(input) {
             const file = input.files[0];
             if (!file) return;
@@ -1325,22 +971,14 @@
                         if (!db.punches) db.punches = {};
                         if (!db.dailyRecords) db.dailyRecords = {};
                         if (!db.siteInfo) db.siteInfo = {};
-                        db.sites = db.sites.map(s => ({ ...s, id: String(s.id) }));
-                        db.categories = db.categories.map(c => ({ ...c, id: String(c.id) }));
-                        db.items = db.items.map(i => ({ ...i, id: String(i.id), catId: String(i.catId) }));
+                        if (!db.workProgress) db.workProgress = {};
+                        if (!db.vendors) db.vendors = [];
+                        if (!db.company) db.company = { name: '公司', address: '' };
+                        if (db.companyOrder === undefined || db.companyOrder === null) db.companyOrder = db.sites.length;
                         saveToLocalStorage();
-                        try {
-                            const now = new Date();
-                            const its = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-                            localStorage.setItem('_importTime', its);
-                            localStorage.setItem('_importFileName', file.name);
-                        } catch(e) {}
-                        if (document.getElementById('inputScriptUrl')) {
-                            document.getElementById('inputScriptUrl').value = db.config.scriptUrl || '';
-                        }
+                        const fnEl = document.getElementById('importedFileName');
+                        if (fnEl) { fnEl.textContent = '✓ ' + file.name; fnEl.style.display = 'inline'; }
                         alert('案場資料與歷史填報紀錄已成功同步匯入！');
-                    const fnEl = document.getElementById('importedFileName');
-                    if (fnEl) { fnEl.textContent = '✓ ' + file.name; fnEl.style.display = 'inline'; }
                         currentState.siteId = null;
                         currentState.siteName = '';
                         navigateTo('sites');
@@ -1353,161 +991,105 @@
         }
 
         function exportJSON() {
-            if (db.sites.length === 0 && db.categories.length === 0 && db.items.length === 0) {
-                if (!confirm('目前系統內無資料，確定要匯出空白的備份檔嗎？')) return;
-            }
-            const hasChanges = (() => { try { return localStorage.getItem('_hasUnbackedChanges') === '1'; } catch(e) { return true; } })();
-            const lastFileTs = (() => { try { return localStorage.getItem('_lastExportFileTs'); } catch(e) { return null; } })();
-
-            let fileTs;
-            if (!hasChanges && lastFileTs) {
-                fileTs = lastFileTs;
-            } else {
-                const now = new Date();
-                const pad = v => String(v).padStart(2, '0');
-                const y = now.getFullYear();
-                const mo = pad(now.getMonth() + 1);
-                const d = pad(now.getDate());
-                const h = pad(now.getHours());
-                const mi = pad(now.getMinutes());
-                fileTs = `${y}${mo}${d}_${h}${mi}`;
-            }
-
-            const fileName = `GCGL_${fileTs}.json`;
-            // 匯出前清理
-            const dbClean = JSON.parse(JSON.stringify(db));
-            // 1. 清理空白工項（無廠商、無樓層、進度 0%）
-            if (dbClean.workProgress) {
-                Object.keys(dbClean.workProgress).forEach(function(sid) {
-                    dbClean.workProgress[sid] = (dbClean.workProgress[sid] || []).filter(function(item) {
-                        const hasVendor = (item.vendor || '').trim();
-                        const hasFloor = (item.floor || '').trim();
-                        const hasProgress = (item.progress || 0) > 0;
-                        return hasVendor || hasFloor || hasProgress;
-                    });
-                });
-            }
-            // 2. 清理孤立案場資料（siteId 不在 sites 清單裡的）
-            const validSiteIds = new Set((dbClean.sites || []).map(function(s) { return s.id; }));
-            ['workProgress', 'siteInfo', 'punches', 'vendors'].forEach(function(key) {
-                if (dbClean[key] && typeof dbClean[key] === 'object' && !Array.isArray(dbClean[key])) {
-                    Object.keys(dbClean[key]).forEach(function(sid) {
-                        if (!validSiteIds.has(sid)) delete dbClean[key][sid];
-                    });
-                }
-            });
-            // 3. 清理 constructionItems：只保留實際出現在 workProgress 或 dailyRecords 的工項名稱
-            if (Array.isArray(dbClean.constructionItems)) {
-                const activeTasks = new Set();
-                Object.values(dbClean.workProgress || {}).forEach(function(items) {
-                    items.forEach(function(item) { if (item.task) activeTasks.add(item.task.trim()); });
-                });
-                Object.values(dbClean.dailyRecords || {}).forEach(function(siteLogs) {
-                    Object.values(siteLogs || {}).forEach(function(logs) {
-                        (Array.isArray(logs) ? logs : [logs]).forEach(function(log) {
-                            const text = (log && log.text) || '';
-                            const matches = text.match(/^● (.+)$/gm) || [];
-                            matches.forEach(function(m) {
-                                const t = m.replace(/^● /, '').trim();
-                                if (t) activeTasks.add(t);
-                            });
-                        });
-                    });
-                });
-                dbClean.constructionItems = dbClean.constructionItems.filter(function(t) {
-                    return activeTasks.has(t);
-                });
-            }
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dbClean, null, 2));
-            const a = document.createElement('a');
-            a.setAttribute("href", dataStr);
-            a.setAttribute("download", fileName);
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-
             try {
-                localStorage.setItem('_lastExportFileTs', fileTs);
-                const m = fileTs.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})$/);
-                if (m) localStorage.setItem('_lastExportTime', `${m[1]}/${m[2]}/${m[3]} ${m[4]}:${m[5]}`);
-                localStorage.removeItem('_hasUnbackedChanges');
-            } catch(e) {}
-            _refreshLastExportDisplay();
+                const dataStr = JSON.stringify(db, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                const now = new Date();
+                const ts = now.getFullYear() + String(now.getMonth()+1).padStart(2,'0') + String(now.getDate()).padStart(2,'0');
+                a.href = url;
+                a.download = '工程管理備份_' + ts + '.json';
+                a.click();
+                URL.revokeObjectURL(url);
+                try { localStorage.setItem('_lastExportTime', Date.now().toString()); } catch(e) {}
+                _refreshLastExportDisplay();
+            } catch(e) { alert('匯出失敗'); }
         }
 
-        function _refreshLastExportDisplay() {
-            const ts = (() => { try { return localStorage.getItem('_lastExportTime'); } catch(e) { return null; } })();
-            const hasChanges = (() => { try { return localStorage.getItem('_hasUnbackedChanges') === '1'; } catch(e) { return false; } })();
-            const wrap = document.getElementById('lastExportTimeDisplay');
-            const txt = document.getElementById('lastExportTimeText');
-            const banner = document.getElementById('backupWarningBanner');
-            const bannerTxt = document.getElementById('backupWarningText');
-            const redDot = document.getElementById('manageRedDot');
+        function saveScriptUrl() {
+            const el = document.getElementById('inputScriptUrl');
+            if (!el) return;
+            if (!db.config) db.config = {};
+            db.config.scriptUrl = el.value.trim();
+            saveToLocalStorage();
+        }
 
-            if (wrap && txt) {
-                if (ts) { txt.innerText = ts; wrap.style.display = ''; }
-                else { wrap.style.display = 'none'; }
-            }
+        function enterScriptUrlEdit() {
+            const el = document.getElementById('inputScriptUrl');
+            if (!el) return;
+            el.disabled = false;
+            el.style.color = '#ffffff';
+            el.style.userSelect = 'text';
+            el.style.webkitUserSelect = 'text';
+            el.style.overflow = 'auto';
+            el.style.whiteSpace = 'pre-wrap';
+        }
 
-            let diffDays = 999;
-            if (ts) {
-                const lastDate = new Date(ts.replace(/\//g, '-').replace(' ', 'T'));
-                diffDays = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-            }
+        function exitScriptUrlEdit() {
+            const el = document.getElementById('inputScriptUrl');
+            if (!el) return;
+            el.disabled = true;
+            el.style.color = '#aaaaaa';
+            el.style.userSelect = 'none';
+            el.style.webkitUserSelect = 'none';
+            el.style.overflow = 'hidden';
+            el.style.whiteSpace = 'nowrap';
+        }
 
-            if (redDot) {
-                const importTs = (() => { try { return localStorage.getItem('_importTime'); } catch(e) { return null; } })();
-                let showDot = false;
-                if (hasChanges && importTs) {
-                    let baseTs = importTs;
-                    if (ts) {
-                        const exportDate = new Date(ts.replace(/\//g, '-').replace(' ', 'T'));
-                        const importDate = new Date(importTs.replace(/\//g, '-').replace(' ', 'T'));
-                        if (exportDate > importDate) baseTs = ts;
+        function clearOnlyOrder() {
+            if (!confirm('確定要清除所有訂單記錄嗎？此操作不可還原。')) return;
+            if (db.dailyRecords) {
+                Object.keys(db.dailyRecords).forEach(dateStr => {
+                    if (db.dailyRecords[dateStr]) {
+                        db.dailyRecords[dateStr].order = [];
                     }
-                    const baseDate = new Date(baseTs.replace(/\//g, '-').replace(' ', 'T'));
-                    const daysSinceBase = Math.floor((Date.now() - baseDate.getTime()) / (1000 * 60 * 60 * 24));
-                    showDot = daysSinceBase >= 3;
-                }
-                redDot.style.display = showDot ? '' : 'none';
+                });
             }
-
-            if (banner && bannerTxt) {
-                let needWarn = false;
-                let msg = '';
-                if (hasChanges) {
-                    if (!ts) { needWarn = true; msg = '尚未進行過系統備份，建議立即匯出！'; }
-                    else if (diffDays >= 7) { needWarn = true; msg = `距上次備份已 ${diffDays} 天且有新變更，建議立即匯出！`; }
-                }
-                banner.style.display = needWarn ? '' : 'none';
-                if (needWarn) bannerTxt.innerText = msg;
-            }
+            cart = {};
+            saveToLocalStorage();
+            showToast('訂單記錄已清除');
         }
 
         function getTargetDateStr() {
+            const el = document.getElementById('inputOrderDate');
+            if (el && el.value) return el.value;
             const now = new Date();
-            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            return now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
         }
 
         function updateHomeImportBtn() {
-            const btn = document.getElementById('homeImportBtnWrap');
-            if (!btn) return;
-            let hasAny = false;
-            if (db.dailyRecords) {
-                for (const d in db.dailyRecords) {
-                    const r = db.dailyRecords[d];
-                    if (r && (r.log || r.order)) { hasAny = true; break; }
-                }
-            }
-            if (!hasAny && db.punches) {
-                for (const sId in db.punches) {
-                    if (db.punches[sId] && Object.keys(db.punches[sId]).length > 0) { hasAny = true; break; }
-                }
-            }
-            btn.classList.toggle('hidden', hasAny);
+            try {
+                const hasChanges = localStorage.getItem('_hasUnbackedChanges') === '1';
+                const btn = document.getElementById('btnHomeImport');
+                if (btn) btn.style.opacity = hasChanges ? '1' : '0.5';
+            } catch(e) {}
         }
 
+        function updateCartBadge() {
+            const count = Object.keys(cart).length;
+            const el1 = document.getElementById('cartCountHeader');
+            const el2 = document.getElementById('cartCountBottom');
+            if (el1) el1.textContent = count;
+            if (el2) el2.textContent = count;
+        }
+
+
         // ================= 月曆模組 =================
+        function _refreshLastExportDisplay() {
+            try {
+                const ts = localStorage.getItem('_lastExportTime');
+                const el = document.getElementById('lastExportTimeDisplay');
+                const txt = document.getElementById('lastExportTimeText');
+                if (!el || !txt) return;
+                if (ts) {
+                    txt.textContent = new Date(parseInt(ts)).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    el.style.display = '';
+                } else {
+                    el.style.display = 'none';
+                }
+            } catch(e) {}
+        }
         function initHomeCalendar() {
             const gridEl = document.getElementById('homeCalendarGrid');
             gridEl.innerHTML = '';
@@ -2104,7 +1686,8 @@
             box.style.flexWrap = 'wrap';
             box.style.flexDirection = 'row';
             box.style.gap = '6px';
-            const isSiteInfoSelect = (box.id === 'siteInfoSiteSelect' || containerOrId === 'siteInfoSiteSelect');
+            const isSiteInfoSelect = (box.id === 'siteInfoSiteSelect' || containerOrId === 'siteInfoSiteSelect'
+                || box.id === 'cartSiteGroup' || containerOrId === 'cartSiteGroup');
             const isEditMode = isSiteInfoSelect && (document.getElementById('mainInfoEditArea') && document.getElementById('mainInfoEditArea').style.display !== 'none');
 
             if (db.sites.length === 0 && !showAdd && !isSiteInfoSelect) {
@@ -4165,7 +3748,7 @@
         }
 
         function _isModalOpen() {
-            return ['addLogModal','editLogModal','editOrderModal','confirmAddModal','addItemNameModal','addBlockModal','wpAddModal','wpProgressEditModal','calcModal','floorPickerModal'].some(
+            return ['addLogModal','editLogModal','editOrderModal','confirmAddModal','addItemNameModal','addBlockModal','wpAddModal','wpProgressEditModal','floorPickerModal'].some(
                 id => { const el = document.getElementById(id); return el && el.style.display === 'flex'; }
             );
         }
@@ -4259,15 +3842,26 @@
                 box.innerHTML = '<span style="font-size:13px; color:#888;">尚無案場</span>';
                 return;
             }
-            db.sites.forEach(function(site) {
-                const isActive = !!(db.punches && db.punches[site.id] && db.punches[site.id][dateStr] && db.punches[site.id][dateStr].status === '上班');
+            // 依 db.companyOrder 決定公司膠囊插入位置
+            const companyOrder = (db.companyOrder !== undefined && db.companyOrder !== null) ? db.companyOrder : db.sites.length;
+            const renderList = [...db.sites.slice(0, companyOrder), { id: '__company__' }, ...db.sites.slice(companyOrder)];
+            renderList.forEach(function(site) {
                 const btn = document.createElement('button');
                 btn.type = 'button';
-                btn.textContent = site.name;
                 btn.className = 'addlog-punch-site-pill';
                 btn.dataset.siteId = site.id;
-                btn.dataset.selected = isActive ? '1' : '0';
-                btn.style.cssText = 'padding:5px 14px; border-radius:20px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; border:1.5px solid ' + (isActive ? '#ffffff' : '#444444') + '; background:' + (isActive ? '#ffffff' : '#111111') + '; color:' + (isActive ? '#000000' : '#ffffff') + ';';
+                if (site.id === '__company__') {
+                    const companyName = (db.company && db.company.name) ? db.company.name : '公司';
+                    const isActive = !!(db.punches && db.punches['__company__'] && db.punches['__company__'][dateStr] && db.punches['__company__'][dateStr].status === '上班');
+                    btn.textContent = companyName;
+                    btn.dataset.selected = isActive ? '1' : '0';
+                    btn.style.cssText = 'padding:5px 14px; border-radius:20px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; border:1.5px solid ' + (isActive ? '#ffffff' : '#444444') + '; background:' + (isActive ? '#ffffff' : '#111111') + '; color:' + (isActive ? '#000000' : '#ffffff') + ';';
+                } else {
+                    const isActive = !!(db.punches && db.punches[site.id] && db.punches[site.id][dateStr] && db.punches[site.id][dateStr].status === '上班');
+                    btn.textContent = site.name;
+                    btn.dataset.selected = isActive ? '1' : '0';
+                    btn.style.cssText = 'padding:5px 14px; border-radius:20px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; border:1.5px solid ' + (isActive ? '#ffffff' : '#444444') + '; background:' + (isActive ? '#ffffff' : '#111111') + '; color:' + (isActive ? '#000000' : '#ffffff') + ';';
+                }
                 btn.addEventListener('click', function() {
                     const nowActive = btn.dataset.selected !== '1';
                     btn.dataset.selected = nowActive ? '1' : '0';
@@ -4716,7 +4310,6 @@
             document.getElementById('btnItemEdit').style.display = '';
             document.getElementById('btnItemSave').style.display = 'none';
             document.getElementById('homeMainBtns').style.display = 'none';
-            document.getElementById('orderCartBtns').style.display = '';
             document.getElementById('cartSubmitBtns').style.display = 'none';
             renderCategories();
         }
@@ -5069,7 +4662,7 @@
                         if (curTask === '（自訂記錄）') return; // 自訂記錄維持不變
                         tsel.innerHTML = _buildLogWpTaskOptions(siteId, curTask);
                         const vsel = row.querySelector('.log-vendor-input');
-                        if (vsel) vsel.innerHTML = _buildLogVendorOptions(siteId, vsel.value);
+                        if (vsel) vsel.innerHTML = _buildLogVendorOptions(siteId, '');
                     });
                 }
             });
@@ -5465,6 +5058,14 @@
                 if (!vendors.includes(companyName)) {
                     vendors = vendors.concat([companyName]);
                 }
+            }
+            // 若無指定 selectedValue 且無案場，顯示空白選項
+            if (!selectedValue && !siteId) {
+                let opts = '<option value="">　</option>';
+                vendors.forEach(function(v) {
+                    opts += '<option value="' + v + '">' + v + '</option>';
+                });
+                return opts;
             }
             // 若無指定，預設第一個廠商
             const defaultVal = selectedValue || (vendors[0] || '');
@@ -6399,7 +6000,7 @@
                     const searchText = (artLabel + ' ' + content).toLowerCase();
                     if (!tokens.every(t => searchText.includes(t))) return;
                     count++;
-                    _buildArticleRow(area, artId, content);
+                    _buildArticleRow(area, artId, content, tokens);
                 });
                 if (count === 0) {
                     area.innerHTML = '<p style="text-align:center; color:#888; padding:24px; font-size:13px;">無符合的條文。</p>';
@@ -6459,7 +6060,7 @@
             }
         }
 
-        function _buildArticleRow(container, artId, content) {
+        function _buildArticleRow(container, artId, content, highlightTokens) {
             const row = document.createElement('div');
             row.style.cssText = 'border-bottom:1px solid #2a2a2a; padding:10px 14px;';
 
@@ -6488,7 +6089,27 @@
 
             const body = document.createElement('div');
             body.style.cssText = 'font-size:13px; color:#cccccc; line-height:1.9; white-space:pre-wrap; word-break:break-all;';
-            body.textContent = _formatLawContent(content);
+
+            if (highlightTokens && highlightTokens.length > 0) {
+                const formatted = _formatLawContent(content);
+                // 逸出正則字元
+                const escaped = highlightTokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+                const regex = new RegExp('(' + escaped.join('|') + ')', 'gi');
+                const parts = formatted.split(regex);
+                parts.forEach(function(part) {
+                    if (regex.test(part)) {
+                        const mark = document.createElement('mark');
+                        mark.style.cssText = 'background:#f5c518; color:#000000; border-radius:2px; padding:0 1px;';
+                        mark.textContent = part;
+                        body.appendChild(mark);
+                    } else {
+                        body.appendChild(document.createTextNode(part));
+                    }
+                    regex.lastIndex = 0;
+                });
+            } else {
+                body.textContent = _formatLawContent(content);
+            }
 
             row.appendChild(headerRow);
             row.appendChild(body);
@@ -6498,6 +6119,7 @@
 
         // ================= 工程進度 =================
         let _wpEditingId = null;
+        let _wpHasPeople = false;
         let _wpCurrentSiteId = null;
 
         function openWorkProgressModal() {
@@ -7215,6 +6837,9 @@
                 peopleEl.style.display = 'none';
             }
             _setWpProgress(pct);
+            _wpHasPeople = people > 0;
+            // 若目前進度為0且有人數，自動設為25
+            if (_wpHasPeople && pct === 0) _setWpProgress(25);
             const delBtn = document.getElementById('wpProgressDeleteBtn');
             if (delBtn) delBtn.style.display = people > 0 ? 'none' : '';
             document.getElementById('wpProgressEditModal').style.display = 'flex';
@@ -7360,74 +6985,6 @@
                 }, { passive: true });
             })();
 
-            // ===== 計價計算機彈窗：右滑返回 =====
-            (function() {
-                const modal = document.getElementById('calcModal');
-                const inner = document.getElementById('calcModalInner');
-                if (!modal || !inner) return;
-                const EDGE = 36;
-                const THRESHOLD = 80;
-                let startX = 0, startY = 0, tracking = false, dragging = false;
-
-                modal.addEventListener('touchstart', function(e) {
-                    if (e.touches.length !== 1) { tracking = false; return; }
-                    const t = e.touches[0];
-                    if (t.clientX > EDGE) { tracking = false; return; }
-                    startX = t.clientX;
-                    startY = t.clientY;
-                    tracking = true;
-                    dragging = false;
-                }, { passive: true });
-
-                modal.addEventListener('touchmove', function(e) {
-                    if (!tracking) return;
-                    const t = e.touches[0];
-                    const dx = t.clientX - startX;
-                    const dy = t.clientY - startY;
-                    if (!dragging) {
-                        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
-                        if (Math.abs(dy) > Math.abs(dx)) { tracking = false; return; }
-                        dragging = true;
-                    }
-                    if (dx <= 0) return;
-                    e.preventDefault();
-                    inner.style.transition = 'none';
-                    inner.style.transform = `translateX(${dx}px)`;
-                    inner.style.opacity = String(Math.max(0.5, 1 - dx / 600));
-                }, { passive: false });
-
-                function reset() {
-                    inner.style.transition = '';
-                    inner.style.transform = '';
-                    inner.style.opacity = '';
-                }
-
-                modal.addEventListener('touchend', function(e) {
-                    if (!tracking || !dragging) { tracking = false; dragging = false; return; }
-                    const t = e.changedTouches[0];
-                    const dx = t.clientX - startX;
-                    tracking = false; dragging = false;
-                    if (dx > THRESHOLD) {
-                        inner.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
-                        inner.style.transform = `translateX(${inner.getBoundingClientRect().width}px)`;
-                        inner.style.opacity = '0';
-                        setTimeout(function() {
-                            _closeCalcModal();
-                            reset();
-                        }, 180);
-                    } else {
-                        inner.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
-                        inner.style.transform = 'translateX(0)';
-                        inner.style.opacity = '1';
-                        setTimeout(reset, 200);
-                    }
-                }, { passive: true });
-
-                modal.addEventListener('touchcancel', function() {
-                    tracking = false; dragging = false; reset();
-                }, { passive: true });
-            })();
-
             document.querySelectorAll('.home-seg').forEach(seg => {
                 seg.addEventListener('touchstart', () => {
                     document.querySelectorAll('.home-seg').forEach(s => s.classList.remove('active-seg'));
@@ -7457,8 +7014,6 @@
             })();
             loadFromLocalStorage();
             _loadWpCollapseState();
-            _loadCalcState();
-            _calcRender(true);
             navigateTo('sites');
             _refreshLastExportDisplay();
 
@@ -7497,7 +7052,9 @@
                     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                     let ratio = (clientX - rect.left) / rect.width;
                     ratio = Math.max(0, Math.min(1, ratio));
-                    return Math.round(ratio * 4) * 25;
+                    let snapped = Math.round(ratio * 4) * 25;
+                    if (_wpHasPeople && snapped < 25) snapped = 25;
+                    return snapped;
                 }
                 track.addEventListener('pointerdown', function(e) {
                     dragging = true;
