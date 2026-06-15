@@ -253,6 +253,42 @@
         <!-- 可滾動：其餘內容 -->
         <div id="siteInfoScrollArea" style="flex:1; min-height:0; overflow-y:auto; padding-bottom:90px; display:flex; flex-direction:column; gap:0;">
 
+            <!-- 公司卡片（公司膠囊選中時顯示） -->
+            <div id="companyDetailWrap" style="display:none; margin-bottom:0;">
+                <div style="background-color:#1e1e1e; border:1px solid #444444; border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px;">
+                    <!-- 公司名稱（檢視） -->
+                    <div id="companyViewNameWrap" style="display:flex; flex-direction:column; gap:2px;">
+                        <div style="font-size:11px; font-weight:bold; color:#888888; letter-spacing:0.04em;">公司名稱</div>
+                        <div id="companyViewName" style="font-size:15px; font-weight:700; color:#ffffff;">公司</div>
+                    </div>
+                    <!-- 公司名稱（編輯） -->
+                    <div id="companyEditNameWrap" style="display:none; flex-direction:column; gap:2px;">
+                        <label style="font-size:11px; font-weight:bold; color:#888888; letter-spacing:0.04em;">公司名稱</label>
+                        <input type="text" id="inputCompanyName" placeholder="公司" style="font-size:15px; font-weight:700; -webkit-user-select:text; user-select:text;">
+                    </div>
+                    <!-- 地址（檢視） -->
+                    <div id="companyViewAddressWrap" style="display:flex; flex-direction:column; gap:2px;">
+                        <div style="font-size:11px; font-weight:bold; color:#888888; letter-spacing:0.04em;">地址</div>
+                        <div id="companyViewAddress" style="font-size:14px; color:#ffffff; line-height:1.5;">—</div>
+                    </div>
+                    <!-- 地址（編輯） -->
+                    <div id="companyEditAddressWrap" style="display:none; flex-direction:column; gap:2px;">
+                        <label style="font-size:11px; font-weight:bold; color:#888888; letter-spacing:0.04em;">地址</label>
+                        <input type="text" id="inputCompanyAddress" placeholder="請輸入公司地址..." style="-webkit-user-select:text; user-select:text;">
+                    </div>
+                    <!-- 施工廠商列表（檢視） -->
+                    <div id="companyViewVendorsWrap" style="display:flex; flex-direction:column; gap:6px;">
+                        <div style="font-size:11px; font-weight:bold; color:#888888; letter-spacing:0.04em;">施工廠商列表</div>
+                        <div id="companyViewVendorPills" style="display:flex; flex-wrap:wrap; gap:6px; min-height:22px;"></div>
+                    </div>
+                    <!-- 施工廠商列表（編輯：膠囊＋長按編輯＋新增） -->
+                    <div id="companyEditVendorsWrap" style="display:none; flex-direction:column; gap:6px;">
+                        <div style="font-size:11px; font-weight:bold; color:#888888; letter-spacing:0.04em;">施工廠商列表</div>
+                        <div id="companyEditVendorPills" style="display:flex; flex-wrap:wrap; gap:6px; min-height:22px;"></div>
+                    </div>
+                </div>
+            </div>
+
                 <div id="siteInfoDetailWrap" style="display:none; margin-bottom:0;">
                     <div style="background-color:#1e1e1e; border:1px solid #444444; border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:8px;">
                         <div id="siteInfoNameWrap" style="display:none; flex-direction:column; gap:2px;">
@@ -679,11 +715,26 @@
 
             // 從案場資訊切走：檢查未儲存
             if (siteOpen && target !== 'site') {
-                const _isEditing = document.getElementById('mainInfoEditArea').style.display !== 'none' || document.getElementById('vendorCardEditArea').style.display !== 'none';
-                if (_isEditing && _siteInfoModalSnapshot !== null && _snapshotSiteInfoModal() !== _siteInfoModalSnapshot) {
-                    if (!confirm('未儲存，是否離開編輯？')) return;
+                const _isCompanyEditing = _isCompanyCardShowing() && document.getElementById('btnMainInfoSave')?.style.display !== 'none';
+                const _isEditing = _isCompanyEditing || document.getElementById('mainInfoEditArea').style.display !== 'none' || document.getElementById('vendorCardEditArea').style.display !== 'none';
+                if (_isEditing) {
+                    if (_siteInfoModalSnapshot !== null && _snapshotSiteInfoModal() !== _siteInfoModalSnapshot) {
+                        if (!confirm('未儲存，是否離開編輯？')) {
+                            _setActiveHomeSeg(0);
+                            return;
+                        }
+                    }
+                    // 靜默清掉編輯狀態，不還原 UI（反正要離開了）
+                    _siteInfoEditBackup = null;
+                    _siteInfoModalSnapshot = null;
+                    document.getElementById('mainInfoEditArea').style.display = 'none';
+                    document.getElementById('mainInfoViewArea').style.display = 'flex';
+                    document.getElementById('vendorCardEditArea').style.display = 'none';
+                    document.getElementById('btnMainInfoEdit').style.display = '';
+                    document.getElementById('btnMainInfoSave').style.display = 'none';
+                    _disableSiteInfoPillsSort();
+                    _disableVendorPillsSort();
                 }
-                if (_isEditing) _cancelMainInfoEdit();
             }
 
             // 從計價表明細切走：檢查未儲存
@@ -938,6 +989,7 @@
                         if (!db.dailyRecords) db.dailyRecords = {};
                         if (!db.siteInfo) db.siteInfo = {};                        if (!db.workProgress) db.workProgress = {};
                         if (!db.vendors) db.vendors = [];
+                        if (!db.company) db.company = { name: '公司', address: '' };
                     }
                 }
             } catch (e) { console.error("讀取本機存檔失敗", e); }
@@ -2028,6 +2080,8 @@
 
         // ================= 案場選擇器 =================
         // ── 共用膠囊案場選擇器 ──
+        const COMPANY_PILL_ID = '__company__';
+
         function _renderSitePills(containerOrId, selectedId, onSelect, showAdd) {
             const box = typeof containerOrId === 'string'
                 ? document.getElementById(containerOrId)
@@ -2039,7 +2093,10 @@
             box.style.flexWrap = 'wrap';
             box.style.flexDirection = 'row';
             box.style.gap = '6px';
-            if (db.sites.length === 0 && !showAdd) {
+            const isSiteInfoSelect = (box.id === 'siteInfoSiteSelect' || containerOrId === 'siteInfoSiteSelect');
+            const isEditMode = isSiteInfoSelect && (document.getElementById('mainInfoEditArea') && document.getElementById('mainInfoEditArea').style.display !== 'none');
+
+            if (db.sites.length === 0 && !showAdd && !isSiteInfoSelect) {
                 box.innerHTML = '<span style="font-size:13px; color:#888;">尚無案場</span>';
                 return;
             }
@@ -2052,6 +2109,18 @@
                 btn.style.cssText = 'padding:5px 14px; border-radius:20px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; border:1.5px solid ' + (isActive ? '#ffffff' : '#444444') + '; background:' + (isActive ? '#ffffff' : '#111111') + '; color:' + (isActive ? '#000000' : '#ffffff') + ';';
                 btn.addEventListener('click', function() {
                     box.querySelectorAll('button[data-site-id]').forEach(function(b) {
+                        if (b.dataset.siteId === COMPANY_PILL_ID && isSiteInfoSelect) {
+                            if (isEditMode) {
+                                b.style.border = '1.5px solid #D9006C';
+                                b.style.background = '#111111';
+                                b.style.color = '#D9006C';
+                            } else {
+                                b.style.border = '1.5px solid #444444';
+                                b.style.background = '#111111';
+                                b.style.color = '#ffffff';
+                            }
+                            return;
+                        }
                         const active = b.dataset.siteId === site.id;
                         b.style.border = '1.5px solid ' + (active ? '#ffffff' : '#444444');
                         b.style.background = active ? '#ffffff' : '#111111';
@@ -2062,11 +2131,48 @@
                 });
                 box.appendChild(btn);
             });
+
+            // 在案場資訊頁面：「公司」膠囊排在最後（新增按鈕之前）
+            if (isSiteInfoSelect) {
+                const companyBtn = document.createElement('button');
+                const companyActive = selectedId === COMPANY_PILL_ID;
+                companyBtn.type = 'button';
+                companyBtn.textContent = (db.company && db.company.name) ? db.company.name : '公司';
+                companyBtn.dataset.siteId = COMPANY_PILL_ID;
+                if (isEditMode) {
+                    companyBtn.style.cssText = 'padding:5px 14px; border-radius:20px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; border:1.5px solid #D9006C; background:' + (companyActive ? '#D9006C' : '#111111') + '; color:' + (companyActive ? '#ffffff' : '#D9006C') + ';';
+                } else {
+                    companyBtn.style.cssText = 'padding:5px 14px; border-radius:20px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; border:1.5px solid ' + (companyActive ? '#ffffff' : '#444444') + '; background:' + (companyActive ? '#ffffff' : '#111111') + '; color:' + (companyActive ? '#000000' : '#ffffff') + ';';
+                }
+                companyBtn.addEventListener('click', function() {
+                    box.querySelectorAll('button[data-site-id]').forEach(function(b) {
+                        if (b.dataset.siteId === COMPANY_PILL_ID) {
+                            if (isEditMode) {
+                                b.style.border = '1.5px solid #D9006C';
+                                b.style.background = '#D9006C';
+                                b.style.color = '#ffffff';
+                            } else {
+                                b.style.border = '1.5px solid #ffffff';
+                                b.style.background = '#ffffff';
+                                b.style.color = '#000000';
+                            }
+                        } else {
+                            b.style.border = '1.5px solid #444444';
+                            b.style.background = '#111111';
+                            b.style.color = '#ffffff';
+                        }
+                    });
+                    box.dataset.siteId = COMPANY_PILL_ID;
+                    if (onSelect) onSelect(COMPANY_PILL_ID, '公司');
+                });
+                box.appendChild(companyBtn);
+            }
+
             if (showAdd) {
                 const addBtn = document.createElement('button');
                 addBtn.type = 'button';
                 addBtn.textContent = '＋';
-                addBtn.style.cssText = 'padding:5px 14px; border-radius:20px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; border:1.5px dashed #666666; background:#111111; color:#888888;';
+                addBtn.style.cssText = 'padding:0; width:30px; height:30px; border-radius:50%; font-size:16px; font-weight:400; cursor:pointer; border:1.5px solid #666666; background:#111111; color:#888888; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;';
                 addBtn.addEventListener('click', function() {
                     _addSiteInfoSiteFromPill(box, onSelect);
                 });
@@ -2083,7 +2189,9 @@
             const newSite = { id: Date.now().toString(), name: trimmed };
             db.sites.push(newSite);
             saveToLocalStorage();
-            _renderSitePills(box, newSite.id, onSelect, true);
+            _renderSitePills(box, newSite.id, function(id) {
+                if (id === COMPANY_PILL_ID) { selectCompanySite(); } else { selectSiteInfoSite(id); }
+            }, true);
             if (onSelect) onSelect(newSite.id, newSite.name);
             renderSiteInfoList();
         }
@@ -2208,6 +2316,8 @@
             if (_siteInfoPillsSortable) { _siteInfoPillsSortable.destroy(); _siteInfoPillsSortable = null; }
             _siteInfoPillsSortable = new Sortable(box, {
                 animation: 150,
+                delay: 500,
+                delayOnTouchOnly: true,
                 filter: 'button:not([data-site-id])',
                 preventOnFilter: false,
                 touchStartThreshold: 8,
@@ -2241,6 +2351,8 @@
             if (_vendorPillsSortable) { _vendorPillsSortable.destroy(); _vendorPillsSortable = null; }
             _vendorPillsSortable = new Sortable(box, {
                 animation: 150,
+                delay: 500,
+                delayOnTouchOnly: true,
                 filter: 'button:not([data-vendor-name])',
                 preventOnFilter: false,
                 touchStartThreshold: 8,
@@ -2315,17 +2427,35 @@
             const pillBox2 = document.getElementById('siteInfoSiteSelect');
             if (pillBox2) {
                 const newSel = _siSelectedSiteId === siteId ? '' : (pillBox2.dataset.siteId || '');
-                _renderSitePills('siteInfoSiteSelect', newSel, function(id) { selectSiteInfoSite(id); }, true);
+                _renderSitePills('siteInfoSiteSelect', newSel, function(id) {
+                    if (id === COMPANY_PILL_ID) { selectCompanySite(); } else { selectSiteInfoSite(id); }
+                }, true);
                 if (_siSelectedSiteId === siteId) {
                     _siSelectedSiteId = null;
                     document.getElementById('siteInfoDetailWrap').style.display = 'none';
                     document.getElementById('progressDetailWrap').style.display = 'none';
+                    document.getElementById('companyDetailWrap').style.display = 'none';
                 }
             }
         }
 
         function selectSiteInfoSite(siteId) {
             if (!siteId) return;
+            // 隱藏公司卡片
+            document.getElementById('companyDetailWrap').style.display = 'none';
+            // 若目前在公司卡片編輯模式，先自動儲存公司名稱
+            const isSaveVisible = document.getElementById('btnMainInfoSave')?.style.display !== 'none';
+            if (isSaveVisible && _isCompanyCardShowing && _isCompanyCardShowing()) {
+                _saveCompanyInfo();
+                saveToLocalStorage();
+                // 重繪膠囊讓公司名稱即時同步
+                const _pillBoxRefresh = document.getElementById('siteInfoSiteSelect');
+                if (_pillBoxRefresh) {
+                    _renderSitePills('siteInfoSiteSelect', siteId, function(id) {
+                        if (id === COMPANY_PILL_ID) { selectCompanySite(); } else { selectSiteInfoSite(id); }
+                    }, true);
+                }
+            }
             const wasEditing = document.getElementById('mainInfoEditArea').style.display !== 'none';
             // 若在編輯模式切換案場，先儲存目前案場資料（含案場名稱）再切換
             if (wasEditing && _siSelectedSiteId && _siSelectedSiteId !== siteId) {
@@ -2484,16 +2614,9 @@
                 if (!_activeVendorName && allVendors.length > 0) {
                     _activeVendorName = selected.length > 0 ? selected[0] : allVendors[0];
                 }
+                // 廠商名稱輸入框在案場編輯模式下隱藏（改名、新增由公司卡片管理）
                 const nameWrap = document.getElementById('vendorNameWrap');
-                const nameInput = document.getElementById('inputActiveVendorName');
-                if (nameWrap && nameInput) {
-                    if (_activeVendorName) {
-                        nameWrap.style.display = 'flex';
-                        nameInput.value = _activeVendorName;
-                    } else {
-                        nameWrap.style.display = 'none';
-                    }
-                }
+                if (nameWrap) nameWrap.style.display = 'none';
                 allVendors.forEach(function(v) {
                     const lit = _vendorHasBlocks(v);
                     const active = (v === _activeVendorName);
@@ -2514,57 +2637,63 @@
                     document.getElementById('vendorCardEditArea').style.display = 'none';
                     document.getElementById('vendorProgressDetailWrap').style.display = 'none';
                 }
-                const addBtn = document.createElement('button');
-                addBtn.type = 'button';
-                addBtn.textContent = '＋';
-                addBtn.style.cssText = 'padding:6px 14px; border-radius:33px; font-size:13px; font-weight:600; cursor:pointer; border:1.5px dashed #666666; background:#1e1e1e; color:#888888;';
-                addBtn.addEventListener('click', function() {
-                    const name = prompt('請輸入廠商名稱：');
-                    if (!name || !name.trim()) return;
-                    const trimmed = name.trim();
-                    if ((db.vendors || []).includes(trimmed)) return alert('廠商「' + trimmed + '」已存在。');
-                    if (!db.vendors) db.vendors = [];
-                    db.vendors.push(trimmed);
+                // 固定加「公司」膠囊（編輯模式），點擊切換亮/暗（toggle）
+                const companyLinked = !!(db.siteInfo && db.siteInfo[_siSelectedSiteId] && db.siteInfo[_siSelectedSiteId].companyLinked);
+                const companyEditActive = companyLinked;
+                const companyEditPill = document.createElement('button');
+                companyEditPill.type = 'button';
+                companyEditPill.textContent = (db.company && db.company.name) ? db.company.name : '公司';
+                companyEditPill.style.cssText = 'padding:6px 14px; border-radius:33px; font-size:13px; font-weight:bold; border:1.5px solid ' + (companyEditActive ? '#ffffff' : '#555555') + '; background:' + (companyEditActive ? '#3d3d3d' : '#1e1e1e') + '; color:' + (companyEditActive ? '#ffffff' : '#888888') + '; cursor:pointer; transition:all 0.15s;';
+                companyEditPill.addEventListener('click', function() {
+                    if (!db.siteInfo) db.siteInfo = {};
+                    if (!db.siteInfo[_siSelectedSiteId]) db.siteInfo[_siSelectedSiteId] = {};
+                    db.siteInfo[_siSelectedSiteId].companyLinked = !db.siteInfo[_siSelectedSiteId].companyLinked;
                     saveToLocalStorage();
-                    _activeVendorName = trimmed;
-                    _renderVendorCardEdit();
+                    _renderVendorSwitchPills(true);
                 });
-                container.appendChild(addBtn);
+                container.appendChild(companyEditPill);
+                // 不顯示「＋」新增廠商按鈕（改在公司卡片管理）
                 return;
             }
 
-            // 檢視模式：只顯示已勾選的廠商作為切換膠囊
+            // 檢視模式：顯示所有公司廠商（db.vendors）作為切換膠囊
             const nameWrapView = document.getElementById('vendorNameWrap');
             if (nameWrapView) nameWrapView.style.display = 'none';
             const vendorDetailCard = document.getElementById('vendorDetailCard');
-            if (selected.length === 0) {
-                if (vendorDetailCard) vendorDetailCard.style.display = 'none';
-                document.getElementById('vendorCardViewArea').style.display = 'none';
-                document.getElementById('vendorCardEditArea').style.display = 'none';
-                document.getElementById('vendorProgressDetailWrap').style.display = 'none';
-                return;
-            }
             if (vendorDetailCard) vendorDetailCard.style.display = '';
-            // 若目前 active 廠商不在選單裡，預設選第一個
-            if (!_activeVendorName || !selected.includes(_activeVendorName)) {
-                _activeVendorName = selected[0];
+            const allVendorsView = db.vendors || [];
+            // 若目前 active 廠商沒有計價表或不在清單裡，預設選第一個有計價表的
+            const companyLinkedView = !!(db.siteInfo && db.siteInfo[_siSelectedSiteId] && db.siteInfo[_siSelectedSiteId].companyLinked);
+            if (!_activeVendorName || (!allVendorsView.includes(_activeVendorName) && _activeVendorName !== COMPANY_PILL_ID) || (!_vendorHasBlocks(_activeVendorName) && _activeVendorName !== COMPANY_PILL_ID) || (_activeVendorName === COMPANY_PILL_ID && !companyLinkedView)) {
+                _activeVendorName = selected.length > 0 ? selected[0] : (companyLinkedView ? COMPANY_PILL_ID : null);
             }
-            selected.forEach(function(v) {
+            allVendorsView.forEach(function(v) {
                 const active = (v === _activeVendorName);
+                const lit = _vendorHasBlocks(v);
+                if (!lit) return; // 唯讀時不顯示無計價表的廠商
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.textContent = v;
-                btn.style.cssText = 'padding:6px 14px; border-radius:33px; font-size:13px; font-weight:bold; border:1px solid ' + (active ? '#ffffff' : '#555555') + '; background:' + (active ? '#3d3d3d' : '#1e1e1e') + '; color:#ffffff; cursor:pointer; transition:all 0.15s;';
+                btn.style.cssText = 'padding:6px 14px; border-radius:33px; font-size:13px; font-weight:bold; border:1px solid ' + (active ? '#ffffff' : (lit ? '#888888' : '#555555')) + '; background:' + (active ? '#3d3d3d' : '#1e1e1e') + '; color:' + (lit ? '#ffffff' : '#888888') + '; cursor:pointer; transition:all 0.15s;';
                 btn.addEventListener('click', function() {
                     _activeVendorName = v;
                     _renderVendorCardView();
                 });
                 container.appendChild(btn);
             });
+            // 固定加「公司」膠囊（唯讀），只在 companyLinked 時顯示，無點擊反應
+            if (companyLinkedView) {
+                const companyPill = document.createElement('button');
+                companyPill.type = 'button';
+                companyPill.textContent = (db.company && db.company.name) ? db.company.name : '公司';
+                companyPill.style.cssText = 'padding:6px 14px; border-radius:33px; font-size:13px; font-weight:bold; border:1px solid #555555; background:#1e1e1e; color:#ffffff; cursor:default; transition:all 0.15s;';
+                container.appendChild(companyPill);
+            }
         }
 
         function _renderVendorCardView() {
             _renderVendorSwitchPills(false);
+            document.getElementById('vendorCardEditArea').style.display = 'none';
             if (!_activeVendorName) return;
             const blocks = _getVendorBlocks();
             const total = _computeVendorContractTotal();
@@ -2576,8 +2705,6 @@
             document.getElementById('vendorCardViewTotalPct').innerText = total > 0 ? (totalAmt / total * 100).toFixed(1) + '%' : '—';
             const viewArea = document.getElementById('vendorCardViewArea');
             viewArea.style.display = 'flex';
-
-            document.getElementById('vendorCardEditArea').style.display = 'none';
             _renderVendorProgressBlocksFor(false);
             const wrap = document.getElementById('vendorProgressDetailWrap');
             if (wrap) wrap.style.display = blocks.length > 0 ? 'flex' : 'none';
@@ -2585,14 +2712,13 @@
 
         function _renderVendorCardEdit() {
             _renderVendorSwitchPills(true);
+            document.getElementById('vendorCardViewArea').style.display = 'none';
             if (!_activeVendorName) return;
             _updateVendorTotalDisplay();
-
-            document.getElementById('vendorCardViewArea').style.display = 'none';
             document.getElementById('vendorCardEditArea').style.display = 'flex';
             _renderVendorProgressBlocksFor(true);
             const wrap = document.getElementById('vendorProgressDetailWrap');
-            if (wrap) wrap.style.display = 'flex'; // 編輯時永遠顯示（含新增按鈕）
+            if (wrap) wrap.style.display = 'flex';
         }
 
         function _renderVendorCard() { _renderVendorCardView(); }
@@ -2906,6 +3032,23 @@
 
         function enterMainInfoEdit() {
             if (!db.siteInfo) db.siteInfo = {};
+            // 若目前選的是公司膠囊，進入公司編輯模式
+            if (_isCompanyCardShowing()) {
+                document.getElementById('btnMainInfoEdit').style.display = 'none';
+                document.getElementById('btnMainInfoSave').style.display = '';
+                _renderCompanyCardEdit();
+                // 重繪膠囊以顯示紅框
+                const pillBox = document.getElementById('siteInfoSiteSelect');
+                if (pillBox) {
+                    const curId = pillBox.dataset.siteId;
+                    _renderSitePills('siteInfoSiteSelect', curId, function(siteId) {
+                        if (siteId === COMPANY_PILL_ID) { selectCompanySite(); }
+                        else { selectSiteInfoSite(siteId); }
+                    }, true);
+                }
+                setTimeout(() => { _siteInfoModalSnapshot = _snapshotSiteInfoModal(); }, 30);
+                return;
+            }
             // 備份整個案場資料，供取消時還原
             _siteInfoEditBackup = JSON.parse(JSON.stringify(db.siteInfo[_siSelectedSiteId] || {}));
             const info = db.siteInfo[_siSelectedSiteId] || {};
@@ -2931,10 +3074,35 @@
             enterVendorCardEdit();
             _enableSiteInfoPillsSort();
             _enableVendorPillsSort();
+            // 重繪膠囊以顯示紅框（公司膠囊）
+            const pillBox2 = document.getElementById('siteInfoSiteSelect');
+            if (pillBox2) {
+                const curId = pillBox2.dataset.siteId;
+                _renderSitePills('siteInfoSiteSelect', curId, function(siteId) {
+                    if (siteId === COMPANY_PILL_ID) { selectCompanySite(); }
+                    else { selectSiteInfoSite(siteId); }
+                }, true);
+            }
             setTimeout(() => { _siteInfoModalSnapshot = _snapshotSiteInfoModal(); }, 30);
         }
 
         function _cancelMainInfoEdit() {
+            // 若在公司模式，直接切回檢視
+            if (_isCompanyCardShowing()) {
+                document.getElementById('btnMainInfoEdit').style.display = '';
+                document.getElementById('btnMainInfoSave').style.display = 'none';
+                _renderCompanyCardView();
+                const pillBox = document.getElementById('siteInfoSiteSelect');
+                if (pillBox) {
+                    const curId = pillBox.dataset.siteId;
+                    _renderSitePills('siteInfoSiteSelect', curId, function(siteId) {
+                        if (siteId === COMPANY_PILL_ID) { selectCompanySite(); }
+                        else { selectSiteInfoSite(siteId); }
+                    }, true);
+                }
+                _siteInfoModalSnapshot = null;
+                return;
+            }
             // 還原備份（子操作如計價表異動已寫入 db，需從備份回滾）
             if (_siteInfoEditBackup !== null && _siSelectedSiteId) {
                 if (!db.siteInfo) db.siteInfo = {};
@@ -2957,6 +3125,15 @@
             document.getElementById('mainInfoEditArea').style.display  = 'none';
             document.getElementById('btnMainInfoEdit').style.display   = '';
             document.getElementById('btnMainInfoSave').style.display   = 'none';
+            // 重繪膠囊回到普通樣式
+            const pillBox2 = document.getElementById('siteInfoSiteSelect');
+            if (pillBox2) {
+                const curId = pillBox2.dataset.siteId;
+                _renderSitePills('siteInfoSiteSelect', curId, function(siteId) {
+                    if (siteId === COMPANY_PILL_ID) { selectCompanySite(); }
+                    else { selectSiteInfoSite(siteId); }
+                }, true);
+            }
             _renderAllProgressBlocks();
             _renderVendorCard();
         }
@@ -2972,7 +3149,9 @@
                     if (!db.sites.some(s => s.id !== _siSelectedSiteId && s.name === newName)) {
                         _applySiteRename(_siSelectedSiteId, newName);
                         renderSiteInfoList();
-                        _renderSitePills('siteInfoSiteSelect', _siSelectedSiteId, function(id) { selectSiteInfoSite(id); }, true);
+                        _renderSitePills('siteInfoSiteSelect', _siSelectedSiteId, function(id) {
+                            if (id === COMPANY_PILL_ID) { selectCompanySite(); } else { selectSiteInfoSite(id); }
+                        }, true);
                     }
                 }
             }
@@ -2995,6 +3174,25 @@
         }
 
         function saveMainInfo() {
+            // 若在公司卡片模式，儲存公司資料
+            if (_isCompanyCardShowing()) {
+                _saveCompanyInfo();
+                saveToLocalStorage();
+                document.getElementById('btnMainInfoEdit').style.display = '';
+                document.getElementById('btnMainInfoSave').style.display = 'none';
+                _renderCompanyCardView();
+                const pillBox0 = document.getElementById('siteInfoSiteSelect');
+                if (pillBox0) {
+                    const curId = pillBox0.dataset.siteId;
+                    _renderSitePills('siteInfoSiteSelect', curId, function(siteId) {
+                        if (siteId === COMPANY_PILL_ID) { selectCompanySite(); }
+                        else { selectSiteInfoSite(siteId); }
+                    }, true);
+                }
+                _siteInfoModalSnapshot = null;
+                showToast('儲存成功');
+                return;
+            }
             const nameInput = document.getElementById('inputSiteInfoName');
             const siteObj = db.sites.find(s => s.id === _siSelectedSiteId);
             if (nameInput && siteObj) {
@@ -3010,7 +3208,9 @@
                         renderSiteInfoList();
                         const pillBox = document.getElementById('siteInfoSiteSelect');
                         if (pillBox) {
-                            _renderSitePills('siteInfoSiteSelect', _siSelectedSiteId, function(id) { selectSiteInfoSite(id); }, true);
+                            _renderSitePills('siteInfoSiteSelect', _siSelectedSiteId, function(id) {
+                                if (id === COMPANY_PILL_ID) { selectCompanySite(); } else { selectSiteInfoSite(id); }
+                            }, true);
                         }
                     }
                 }
@@ -3041,6 +3241,15 @@
             if (nameWrap) nameWrap.style.display = 'none';
             _disableSiteInfoPillsSort();
             _disableVendorPillsSort();
+            // 重繪膠囊回到普通樣式
+            const pillBox3 = document.getElementById('siteInfoSiteSelect');
+            if (pillBox3) {
+                const curId3 = pillBox3.dataset.siteId;
+                _renderSitePills('siteInfoSiteSelect', curId3, function(siteId) {
+                    if (siteId === COMPANY_PILL_ID) { selectCompanySite(); }
+                    else { selectSiteInfoSite(siteId); }
+                }, true);
+            }
             _siteInfoEditBackup = null;
             _renderMainInfoView();
             _renderAllProgressBlocks();
@@ -3114,7 +3323,6 @@
                     </div>
                 `;
             } else {
-                // View mode: 類型 | 名稱 | 金額 | % 四欄橫排
                 titleBar.style.cssText = 'display:grid; grid-template-columns:52px 1fr max-content 52px; align-items:center; gap:8px; width:100%;';
                 titleBar.innerHTML = `
                     <span style="font-size:12px; color:#aaaaaa; font-weight:600; white-space:nowrap;">${blk.blockType || ''}</span>
@@ -3528,7 +3736,8 @@
 
         function _backFromSiteInfo() {
             if (_blurActiveInput()) return;
-            const _isEditing = document.getElementById('mainInfoEditArea').style.display !== 'none' || document.getElementById('vendorCardEditArea').style.display !== 'none';
+            const _isCompanyEditing = _isCompanyCardShowing() && document.getElementById('btnMainInfoSave')?.style.display !== 'none';
+            const _isEditing = _isCompanyEditing || document.getElementById('mainInfoEditArea').style.display !== 'none' || document.getElementById('vendorCardEditArea').style.display !== 'none';
             if (_isEditing) {
                 if (_siteInfoModalSnapshot !== null && _snapshotSiteInfoModal() !== _siteInfoModalSnapshot) {
                     if (!confirm('未儲存，是否離開編輯？')) return;
@@ -3676,7 +3885,7 @@
                 _setHeaderBack(_tryCloseProgressModal);
                 document.getElementById('pageProgressEdit').classList.add('active');
                 document.getElementById('appTitle').innerText = '';
-                _setActiveHomeSeg(3);
+                _setActiveHomeSeg(_prevPage === 'workprogress' ? 3 : 0);
             }
             updateCartBadge();
         }
@@ -3729,11 +3938,16 @@
             document.getElementById('siteInfoScrollArea')?.scrollTo(0, 0);
             document.getElementById('siteInfoDetailWrap').style.display = 'none';
             document.getElementById('progressDetailWrap').style.display = 'none';
+            document.getElementById('companyDetailWrap').style.display = 'none';
             _siSelectedSiteId = null;
             // 填充案場膠囊選擇器
             const initialSiteId = targetSiteId || (db.sites.length > 0 ? db.sites[0].id : '');
             _renderSitePills('siteInfoSiteSelect', initialSiteId, function(siteId) {
-                selectSiteInfoSite(siteId);
+                if (siteId === COMPANY_PILL_ID) {
+                    selectCompanySite();
+                } else {
+                    selectSiteInfoSite(siteId);
+                }
             }, true);
             if (initialSiteId) {
                 selectSiteInfoSite(initialSiteId);
@@ -3743,6 +3957,213 @@
 
         function closeSiteInfoModal() {
             navigateTo('sites');
+        }
+
+        // ================= 公司卡片 =================
+        function _getCompanyData() {
+            if (!db.company) db.company = { name: '公司', address: '' };
+            return db.company;
+        }
+
+        function selectCompanySite() {
+            // 若目前在案場編輯模式，先自動儲存案場資料
+            const wasEditing = document.getElementById('mainInfoEditArea').style.display !== 'none';
+            if (wasEditing && _siSelectedSiteId) {
+                _saveMainInfoSilent();
+            }
+            // 隱藏案場詳情，顯示公司卡片
+            document.getElementById('siteInfoDetailWrap').style.display = 'none';
+            document.getElementById('progressDetailWrap').style.display = 'none';
+            document.getElementById('companyDetailWrap').style.display = '';
+            _siSelectedSiteId = null;
+            const isEditing = document.getElementById('btnMainInfoSave')?.style.display !== 'none';
+            if (isEditing) {
+                _renderCompanyCardEdit();
+            } else {
+                _renderCompanyCardView();
+            }
+        }
+
+        function _renderCompanyVendorPills(isEditing) {
+            const containerId = isEditing ? 'companyEditVendorPills' : 'companyViewVendorPills';
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            container.innerHTML = '';
+            const vendors = db.vendors || [];
+
+            if (!isEditing && vendors.length === 0) {
+                const empty = document.createElement('span');
+                empty.style.cssText = 'font-size:13px; color:#888888;';
+                empty.textContent = '尚無廠商';
+                container.appendChild(empty);
+                return;
+            }
+
+            vendors.forEach(function(v) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = v;
+                btn.dataset.vendorName = v;
+
+                if (isEditing) {
+                    // 編輯模式：白色膠囊，長按可改名
+                    btn.style.cssText = 'padding:6px 14px; border-radius:33px; font-size:13px; font-weight:600; cursor:pointer; border:1.5px solid #555555; background:#1e1e1e; color:#ffffff; white-space:nowrap; -webkit-user-select:none; user-select:none; touch-action:manipulation;';
+
+                    // 長按改名（mobile: touchstart/touchend, desktop: mousedown/mouseup）
+                    let _lpTimer = null;
+                    function _startLp(e) {
+                        _lpTimer = setTimeout(function() {
+                            _lpTimer = null;
+                            _editVendorNameInline(v, btn);
+                        }, 500);
+                    }
+                    function _cancelLp() { if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; } }
+                    btn.addEventListener('touchstart', _startLp, { passive: true });
+                    btn.addEventListener('touchend', _cancelLp, { passive: true });
+                    btn.addEventListener('touchmove', _cancelLp, { passive: true });
+                    btn.addEventListener('mousedown', _startLp);
+                    btn.addEventListener('mouseup', _cancelLp);
+                    btn.addEventListener('mouseleave', _cancelLp);
+                    // 短按不做動作（避免意外觸發）
+                    btn.addEventListener('click', function(e) { e.preventDefault(); });
+                } else {
+                    // 檢視模式：白色膠囊樣式
+                    btn.style.cssText = 'padding:6px 14px; border-radius:33px; font-size:13px; font-weight:600; cursor:default; border:1px solid #555555; background:#1e1e1e; color:#ffffff; white-space:nowrap;';
+                }
+                container.appendChild(btn);
+            });
+
+            if (isEditing) {
+                // ＋ 新增廠商按鈕
+                const addBtn = document.createElement('button');
+                addBtn.type = 'button';
+                addBtn.textContent = '＋';
+                addBtn.style.cssText = 'padding:0; width:30px; height:30px; border-radius:50%; font-size:16px; font-weight:400; cursor:pointer; border:1.5px solid #666666; background:#1e1e1e; color:#888888; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;';
+                addBtn.addEventListener('click', function() {
+                    const name = prompt('請輸入廠商名稱：');
+                    if (!name || !name.trim()) return;
+                    const trimmed = name.trim();
+                    if ((db.vendors || []).includes(trimmed)) return alert('廠商「' + trimmed + '」已存在。');
+                    if (!db.vendors) db.vendors = [];
+                    db.vendors.push(trimmed);
+                    saveToLocalStorage();
+                    _renderCompanyVendorPills(true);
+                });
+                container.appendChild(addBtn);
+            }
+        }
+
+        function _editVendorNameInline(oldName, pillBtn) {
+            // 自訂彈窗：右上角刪除、儲存，下方輸入框
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:400; display:flex; align-items:center; justify-content:center;';
+
+            const modal = document.createElement('div');
+            modal.style.cssText = 'background:#1e1e1e; border:1px solid #444; border-radius:14px; padding:16px; width:calc(100% - 64px); max-width:320px; display:flex; flex-direction:column; gap:14px;';
+
+            // 標題列：左側標題，右側刪除＋儲存
+            const titleRow = document.createElement('div');
+            titleRow.style.cssText = 'display:flex; align-items:center; gap:8px;';
+
+            const title = document.createElement('span');
+            title.style.cssText = 'font-size:14px; font-weight:bold; color:#ffffff; flex:1; min-width:0;';
+            title.textContent = '編輯廠商';
+
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.textContent = '刪除';
+            delBtn.style.cssText = 'padding:0 12px; height:28px; border-radius:8px; border:none; background:#D9006C; color:#ffffff; font-size:12px; font-weight:bold; cursor:pointer; flex-shrink:0;';
+            delBtn.addEventListener('click', function() {
+                if (!confirm('確定要刪除廠商「' + oldName + '」嗎？')) return;
+                const idx = (db.vendors || []).indexOf(oldName);
+                if (idx !== -1) db.vendors.splice(idx, 1);
+                Object.keys(db.workProgress || {}).forEach(function(sId) {
+                    (db.workProgress[sId] || []).forEach(function(wp) { if (wp.vendor === oldName) wp.vendor = ''; });
+                });
+                Object.keys(db.siteInfo || {}).forEach(function(sId) {
+                    const info = db.siteInfo[sId];
+                    if (!info) return;
+                    if (info.vendor === oldName) info.vendor = '';
+                    if (Array.isArray(info.vendors)) info.vendors = info.vendors.filter(function(v) { return v !== oldName; });
+                    if (info.vendorProgressBlocksMap && info.vendorProgressBlocksMap[oldName]) delete info.vendorProgressBlocksMap[oldName];
+                });
+                saveToLocalStorage();
+                document.body.removeChild(overlay);
+                _renderCompanyVendorPills(true);
+            });
+
+            const saveBtn = document.createElement('button');
+            saveBtn.type = 'button';
+            saveBtn.textContent = '儲存';
+            saveBtn.style.cssText = 'padding:0 12px; height:28px; border-radius:8px; border:none; background:#000000; color:#ffffff; font-size:12px; font-weight:bold; cursor:pointer; flex-shrink:0;';
+            saveBtn.addEventListener('click', function() {
+                const trimmed = input.value.trim();
+                if (!trimmed) return;
+                if (trimmed === oldName) { document.body.removeChild(overlay); return; }
+                if ((db.vendors || []).includes(trimmed)) { alert('廠商「' + trimmed + '」已存在。'); return; }
+                _applyVendorRename(oldName, trimmed);
+                const idx = (db.vendors || []).indexOf(oldName);
+                if (idx !== -1) db.vendors[idx] = trimmed;
+                saveToLocalStorage();
+                document.body.removeChild(overlay);
+                _renderCompanyVendorPills(true);
+            });
+
+            titleRow.appendChild(title);
+            titleRow.appendChild(delBtn);
+            titleRow.appendChild(saveBtn);
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = oldName;
+            input.style.cssText = 'width:100%; border:1px solid #555555; border-radius:8px; padding:8px 12px; font-size:14px; background:#111111; color:#ffffff; outline:none; -webkit-user-select:text; user-select:text;';
+            input.addEventListener('keydown', function(e) { if (e.key === 'Enter') saveBtn.click(); });
+
+            overlay.addEventListener('click', function(e) { if (e.target === overlay) document.body.removeChild(overlay); });
+
+            modal.appendChild(titleRow);
+            modal.appendChild(input);
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+            setTimeout(function() { input.focus(); input.select(); }, 50);
+        }
+
+        function _renderCompanyCardView() {
+            const data = _getCompanyData();
+            document.getElementById('companyViewName').textContent = data.name || '公司';
+            document.getElementById('companyViewAddress').textContent = data.address || '—';
+            document.getElementById('companyViewNameWrap').style.display = 'flex';
+            document.getElementById('companyEditNameWrap').style.display = 'none';
+            document.getElementById('companyViewAddressWrap').style.display = 'flex';
+            document.getElementById('companyEditAddressWrap').style.display = 'none';
+            document.getElementById('companyViewVendorsWrap').style.display = 'flex';
+            document.getElementById('companyEditVendorsWrap').style.display = 'none';
+            _renderCompanyVendorPills(false);
+        }
+
+        function _renderCompanyCardEdit() {
+            const data = _getCompanyData();
+            document.getElementById('inputCompanyName').value = data.name || '公司';
+            document.getElementById('inputCompanyAddress').value = data.address || '';
+            document.getElementById('companyViewNameWrap').style.display = 'none';
+            document.getElementById('companyEditNameWrap').style.display = 'flex';
+            document.getElementById('companyViewAddressWrap').style.display = 'none';
+            document.getElementById('companyEditAddressWrap').style.display = 'flex';
+            document.getElementById('companyViewVendorsWrap').style.display = 'none';
+            document.getElementById('companyEditVendorsWrap').style.display = 'flex';
+            _renderCompanyVendorPills(true);
+        }
+
+        function _saveCompanyInfo() {
+            if (!db.company) db.company = {};
+            const nameVal = (document.getElementById('inputCompanyName')?.value || '').trim() || '公司';
+            const addrVal = (document.getElementById('inputCompanyAddress')?.value || '').trim();
+            db.company.name = nameVal;
+            db.company.address = addrVal;
+        }
+
+        function _isCompanyCardShowing() {
+            return document.getElementById('companyDetailWrap')?.style.display !== 'none';
         }
 
         function _isModalOpen() {
@@ -3974,7 +4395,10 @@
             const notes = document.getElementById('inputSiteInfoNotes')?.value || '';
             const vendors = _getSelectedVendors().join(',');
             const activeVendor = _activeVendorName || '';
-            return JSON.stringify({ site, name, floorBelow, floorAbove, floorRoof, address, notes, vendors, activeVendor });
+            // 公司卡片欄位
+            const companyName = document.getElementById('inputCompanyName')?.value || '';
+            const companyAddress = document.getElementById('inputCompanyAddress')?.value || '';
+            return JSON.stringify({ site, name, floorBelow, floorAbove, floorRoof, address, notes, vendors, activeVendor, companyName, companyAddress });
         }
 
         function _snapshotProgressModal() {
@@ -5023,7 +5447,15 @@
 
         function _buildLogVendorOptions(siteId, selectedValue, source) {
             const rawV = source === 'blocks' ? _siteVendorsWithBlocks(siteId) : _siteVendorsInProgress(siteId);
-            const vendors = rawV.length > 0 ? rawV : (db.vendors || []);
+            let vendors = rawV.length > 0 ? rawV : (db.vendors || []);
+            // 若案場已勾選「公司」，將公司名稱加入廠商選項
+            const companyLinked = !!(db.siteInfo && db.siteInfo[siteId] && db.siteInfo[siteId].companyLinked);
+            if (companyLinked) {
+                const companyName = (db.company && db.company.name) ? db.company.name : '公司';
+                if (!vendors.includes(companyName)) {
+                    vendors = vendors.concat([companyName]);
+                }
+            }
             // 若無指定，預設第一個廠商
             const defaultVal = selectedValue || (vendors[0] || '');
             let opts = '';
