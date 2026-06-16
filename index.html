@@ -1067,7 +1067,10 @@
                 callback: function(resp) {
                     if (resp && resp.access_token) {
                         _googleAccessToken = resp.access_token;
-                        try { sessionStorage.setItem('_googleAccessToken', resp.access_token); } catch(e) {}
+                        try {
+                            localStorage.setItem('_googleAccessToken', resp.access_token);
+                            localStorage.setItem('_googleAccessTokenTime', String(Date.now()));
+                        } catch(e) {}
                         _googleSetButtonLoggedIn(true);
                         _googleSetStatus('已登入，正在同步…');
                         _googleSyncNow();
@@ -1082,7 +1085,10 @@
             if (_googleAccessToken) {
                 _googleAccessToken = null;
                 _googleDriveFileId = null;
-                try { sessionStorage.removeItem('_googleAccessToken'); } catch(e) {}
+                try {
+                    localStorage.removeItem('_googleAccessToken');
+                    localStorage.removeItem('_googleAccessTokenTime');
+                } catch(e) {}
                 _googleSetButtonLoggedIn(false);
                 _googleSetStatus('已登出，資料僅儲存於本機。');
                 return;
@@ -1144,6 +1150,10 @@
             } catch (e) {
                 if (String(e.message).indexOf('401') !== -1) {
                     _googleAccessToken = null;
+                    try {
+                        localStorage.removeItem('_googleAccessToken');
+                        localStorage.removeItem('_googleAccessTokenTime');
+                    } catch(e2) {}
                     _googleSetButtonLoggedIn(false);
                     _googleSetStatus('登入已過期，請重新登入。');
                 } else {
@@ -7233,8 +7243,9 @@
             _wpHasPeople = people > 0 || !!_sd;
             // 若目前進度為0且（有人數或有日期），自動設為25
             if (_wpHasPeople && pct === 0) _setWpProgress(25);
+            // 刪除按鈕：與25%鎖定用同一條件，確保「進度被鎖定在25%以上」時不會出現可刪除的按鈕
             const delBtn = document.getElementById('wpProgressDeleteBtn');
-            if (delBtn) delBtn.style.display = people > 0 ? 'none' : '';
+            if (delBtn) delBtn.style.display = _wpHasPeople ? 'none' : '';
             document.getElementById('wpProgressEditModal').style.display = 'flex';
         }
 
@@ -7315,11 +7326,20 @@
             navigateTo('sites');
             _refreshLastExportDisplay();
             try {
-                const savedToken = sessionStorage.getItem('_googleAccessToken');
-                if (savedToken) {
+                const savedToken = localStorage.getItem('_googleAccessToken');
+                const savedTime = Number(localStorage.getItem('_googleAccessTokenTime')) || 0;
+                const ageMs = Date.now() - savedTime;
+                const TOKEN_MAX_AGE_MS = 55 * 60 * 1000; // 略短於Google access token約1小時的效期，保守判斷
+                if (savedToken && savedTime && ageMs < TOKEN_MAX_AGE_MS) {
                     _googleAccessToken = savedToken;
                     _googleSetButtonLoggedIn(true);
                     _googleSetStatus('已登入。');
+                } else if (savedToken) {
+                    // token 已超過預期效期，清除並要求重新登入，避免帶著失效token打API
+                    localStorage.removeItem('_googleAccessToken');
+                    localStorage.removeItem('_googleAccessTokenTime');
+                    _googleSetButtonLoggedIn(false);
+                    _googleSetStatus('登入已過期，請重新登入。');
                 }
             } catch(e) {}
 
