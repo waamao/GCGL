@@ -194,6 +194,9 @@
         .view-box-card { border: none; border-bottom: 1px solid var(--border-focus); border-radius: 0; padding: 10px 0; background-color: var(--bg-page); display: flex; flex-direction: column; gap: 4px; user-select: none; }
         .view-box-title { font-size: 13px; font-weight: bold; color: var(--text-primary); display: flex; align-items: center; gap: 6px; }
         .view-box-content { font-size: 13px; background: var(--bg-page); border: none; padding: 6px 0; border-radius: 0; min-height: 40px; white-space: pre-wrap; word-break: break-all; color: var(--text-primary); }
+        .record-pill { display:inline-flex; align-items:center; padding:2px 10px; border-radius:33px; font-size:12px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; box-sizing:border-box; }
+        .record-pill-white { background:#2a2a2a; color:#ffffff; border:1.5px solid #ffffff; }
+        .record-pill-pink { background:rgba(217,0,108,0.12); color:var(--accent-pink); border:1.5px solid var(--accent-pink); }
 
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -224,7 +227,7 @@
         </div>
         <h1 id="appTitle" class="header-title"></h1>
         <div id="headerRightBtns" style="display: flex; gap: 4px; flex-shrink: 0;">
-            <button onclick="_switchHomeModal('manage')" style="background:none; border:none; padding:4px; cursor:pointer;"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:22px;height:22px;vertical-align:middle;color:var(--text-primary);"><path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 0 1 1.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.559.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.894.149c-.424.07-.764.383-.929.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 0 1-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.398.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 0 1-.12-1.45l.527-.737c.25-.35.272-.806.108-1.204-.165-.397-.506-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125 1.125 0 0 1 .12-1.45l.773-.773a1.125 1.125 0 0 1 1.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg></button>
+            <button onclick="_switchHomeModal('manage')" style="background:none; border:none; padding:4px; cursor:pointer; position:relative;"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:22px;height:22px;vertical-align:middle;color:var(--text-primary);"><path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 0 1 1.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.559.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.894.149c-.424.07-.764.383-.929.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 0 1-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.398.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 0 1-.12-1.45l.527-.737c.25-.35.272-.806.108-1.204-.165-.397-.506-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125 1.125 0 0 1 .12-1.45l.773-.773a1.125 1.125 0 0 1 1.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg><span id="settingsRedDot" style="display:none; position:absolute; top:3px; right:3px; width:8px; height:8px; border-radius:50%; background:var(--accent-red); border:1.5px solid var(--bg-page);"></span></button>
         </div>
         <div id="headerSiteInfoBtns" style="display: none; gap: 4px; flex-shrink: 0;">
             <button onclick="enterMainInfoEdit()" id="btnMainInfoEdit" style="background:var(--btn-bg); color:var(--btn-text); font-size:12px; font-weight:bold; padding:0 12px; border-radius:8px; flex-shrink:0; height:24px; line-height:24px;">編輯</button>
@@ -1036,7 +1039,25 @@
             try {
                 localStorage.setItem('construction_order_db', JSON.stringify(db));
             } catch (e) { console.error("寫入本機存檔失敗", e); }
+            _markUnexportedChange();
             _googleScheduleAutoSave();
+        }
+
+        // 設定按鈕紅點：只要任何記錄有變更就標記，直到使用者匯出備份(JSON)為止才清除
+        function _markUnexportedChange() {
+            try { localStorage.setItem('_hasUnexportedChanges', '1'); } catch(e) {}
+            _refreshSettingsDot();
+        }
+        function _clearUnexportedChange() {
+            try { localStorage.removeItem('_hasUnexportedChanges'); } catch(e) {}
+            _refreshSettingsDot();
+        }
+        function _refreshSettingsDot() {
+            const dot = document.getElementById('settingsRedDot');
+            if (!dot) return;
+            let has = false;
+            try { has = localStorage.getItem('_hasUnexportedChanges') === '1'; } catch(e) {}
+            dot.style.display = has ? 'block' : 'none';
         }
 
         // ================= Google 登入 + Drive 自動存檔 =================
@@ -1241,6 +1262,7 @@
                 URL.revokeObjectURL(url);
                 try { localStorage.setItem('_lastExportTime', Date.now().toString()); } catch(e) {}
                 _refreshLastExportDisplay();
+                _clearUnexportedChange();
             } catch(e) { alert('匯出失敗'); }
         }
 
@@ -1584,7 +1606,21 @@
             cardQueue.sort((a, b) => a.typeOrder - b.typeOrder);
 
             const prefixMap = { log: 'inlineChkLog', order: 'inlineChkOrder' };
-            const baseTitleMap = { log: '工程記錄', order: '材料訂購' };
+
+            // 產生記錄卡標題膠囊 HTML：
+            // - 出勤／材料訂單：白字白框膠囊
+            // - 工程記錄：有廠商時顯示第一個廠商名稱（白字白框）；自訂記錄或無廠商時顯示「工程記錄」（桃紅色字框）
+            function _buildRecordPillHTML(type, item) {
+                if (type === 'punch') return '<span class="record-pill record-pill-white">出勤</span>';
+                if (type === 'order') return '<span class="record-pill record-pill-white">材料訂單</span>';
+                const isCustomOnly = item.text.includes('○') && !item.text.includes('●');
+                const firstVendor = (!isCustomOnly && Array.isArray(item.vendors) && item.vendors.length) ? item.vendors[0] : '';
+                if (firstVendor) {
+                    const escaped = firstVendor.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    return '<span class="record-pill record-pill-white">' + escaped + '</span>';
+                }
+                return '<span class="record-pill record-pill-pink">工程記錄</span>';
+            }
 
             cardQueue.forEach(({ type, item, idx }) => {
                 hasAnyContent = true;
@@ -1597,7 +1633,7 @@
                     card.innerHTML = `
                         <div class="view-box-title" style="justify-content:space-between;">
                             <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;">
-                                <span>出勤</span>
+                                ${_buildRecordPillHTML(type, item)}
                             </div>
                             <div style="display:flex;gap:4px;">
                                 <button type="button" onclick="shareInlinePunchToLine('${dateStr}')" style="background:var(--accent-line-green);color:white;font-size:10px;line-height:1;padding:3px 9px;border-radius:6px;flex-shrink:0;">LINE</button>
@@ -1608,15 +1644,10 @@
                     `;
                 } else {
                     const prefix = prefixMap[type];
-                    let displayTitle = baseTitleMap[type];
-                    if (item.siteId) {
-                        const siteObj = db.sites.find(s => s.id === item.siteId);
-                        if (siteObj && siteObj.name) displayTitle += `・${siteObj.name}`;
-                    }
                     card.innerHTML = `
                         <div class="view-box-title" style="justify-content:space-between;">
-                            <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;">
-                                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${displayTitle}</span>
+                            <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;overflow:hidden;">
+                                ${_buildRecordPillHTML(type, item)}
                             </div>
                             <div style="display:flex;gap:4px;flex-shrink:0;">
                                 <button type="button" onclick="shareInlineCardToLine('${prefix}','${idx}','${dateStr}')" style="background:var(--accent-line-green);color:white;font-size:10px;line-height:1;padding:3px 9px;border-radius:6px;flex-shrink:0;">LINE</button>
@@ -5548,6 +5579,7 @@
             const items = container.getElementsByClassName('log-entry-item');
             let customText = '', regularText = '', hasContent = false;
             const syncItems = [];
+            const vendorsSeen = [];
             for (let i = 0; i < items.length; i++) {
                 // 簡易備忘行（log-custom-item，無 task select）
                 if (items[i].classList.contains('log-custom-item')) {
@@ -5571,6 +5603,7 @@
                         return alert('請為工項「' + taskVal + '」選擇至少一個樓層');
                     }
                     hasContent = true;
+                    if (vendorVal && !vendorsSeen.includes(vendorVal)) vendorsSeen.push(vendorVal);
                     const rawPeople = parseFloat(peopleVal) || 0;
                     const floorsToWrite = floorVals.length ? floorVals : [''];
                     // 文字合併成一筆，樓層顯示摘要，人數是填入的原始值
@@ -5597,7 +5630,7 @@
             if (!Array.isArray(db.dailyRecords[dateStr].log)) {
                 db.dailyRecords[dateStr].log = db.dailyRecords[dateStr].log ? [db.dailyRecords[dateStr].log] : [];
             }
-            db.dailyRecords[dateStr].log.push({ siteId, text: logText });
+            db.dailyRecords[dateStr].log.push({ siteId, text: logText, vendors: vendorsSeen });
             const newIdx = db.dailyRecords[dateStr].log.length - 1;
             _syncLogToWorkProgress(siteId, syncItems);
             saveToLocalStorage();
@@ -5826,6 +5859,7 @@
 
             // 收集施工項目同步
             const syncItems = [];
+            const vendorsSeen2 = [];
             const container = document.getElementById('editLogItemsContainer');
             const logItems = container.getElementsByClassName('log-entry-item');
             for (let i = 0; i < logItems.length; i++) {
@@ -5835,6 +5869,7 @@
                 const vendorEl2 = logItems[i].querySelector('.log-vendor-input');
                 const vendorVal2 = vendorEl2 ? vendorEl2.value.trim() : '';
                 if (taskVal && taskVal !== '（自訂記錄）') {
+                    if (vendorVal2 && !vendorsSeen2.includes(vendorVal2)) vendorsSeen2.push(vendorVal2);
                     const floorsS = floorVals2.length ? floorVals2 : [''];
                     floorsS.forEach(function(fv) { syncItems.push({ constructionVal: taskVal, floorVal: fv, vendorVal: vendorVal2 }); });
                 }
@@ -5851,7 +5886,7 @@
             if (!db.dailyRecords[newDateStr]) db.dailyRecords[newDateStr] = {};
             const newRec = db.dailyRecords[newDateStr];
             if (!Array.isArray(newRec[type])) newRec[type] = newRec[type] ? [newRec[type]] : [];
-            newRec[type].push({ siteId, text: newText });
+            newRec[type].push({ siteId, text: newText, vendors: vendorsSeen2 });
             _syncLogToWorkProgress(siteId, syncItems);
             saveToLocalStorage();
             closeEditLogModal();
@@ -5893,13 +5928,25 @@
 
             const logText = compileEditLogText();
             if (!logText) return alert('請至少填寫一項項目內容！');
+            const copyVendorsSeen = [];
+            const copyContainer = document.getElementById('editLogItemsContainer');
+            const copyLogItems = copyContainer ? copyContainer.getElementsByClassName('log-entry-item') : [];
+            for (let i = 0; i < copyLogItems.length; i++) {
+                const taskEl3 = copyLogItems[i].querySelector('.log-task-input');
+                const taskVal3 = taskEl3 ? taskEl3.value.trim() : '';
+                if (taskVal3 && taskVal3 !== '（自訂記錄）') {
+                    const vendorEl3 = copyLogItems[i].querySelector('.log-vendor-input');
+                    const vendorVal3 = vendorEl3 ? vendorEl3.value.trim() : '';
+                    if (vendorVal3 && !copyVendorsSeen.includes(vendorVal3)) copyVendorsSeen.push(vendorVal3);
+                }
+            }
             if (!db.dailyRecords[targetDateStr]) db.dailyRecords[targetDateStr] = {};
             if (!Array.isArray(db.dailyRecords[targetDateStr].log)) {
                 db.dailyRecords[targetDateStr].log = db.dailyRecords[targetDateStr].log ? [db.dailyRecords[targetDateStr].log] : [];
             }
             const alreadyCopied = db.dailyRecords[targetDateStr].log.some(r => r.text === logText && r.siteId === selectedSiteId);
             if (!alreadyCopied) {
-                db.dailyRecords[targetDateStr].log.push({ siteId: selectedSiteId, text: logText });
+                db.dailyRecords[targetDateStr].log.push({ siteId: selectedSiteId, text: logText, vendors: copyVendorsSeen });
                 saveToLocalStorage();
                 initHomeCalendar();
                 if (selectedHomeDateStr) {
@@ -7323,6 +7370,7 @@
             loadFromLocalStorage();
             _applyStoredThemeMode();
             _loadWpCollapseState();
+            _refreshSettingsDot();
             navigateTo('sites');
             _refreshLastExportDisplay();
             try {
