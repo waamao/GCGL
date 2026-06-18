@@ -1589,7 +1589,7 @@
         }
 
         function onCalendarDateInputChange(val) {
-            if (!val) return;
+            if (!val) { goToToday(); return; }
             const [y, m, dayNum] = val.split('-').map(Number);
             homeCalYear = y;
             homeCalMonth = m - 1;
