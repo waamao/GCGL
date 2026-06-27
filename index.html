@@ -105,16 +105,18 @@
 <body>
 
 <nav>
-    <div class="nav-logo">工地現場管理</div>
+    <div class="nav-logo" style="display:flex;align-items:center;gap:10px;"><img src="https://raw.githubusercontent.com/waamao/GCGL/main/favicon1.png" alt="Logo" style="width:28px;height:28px;object-fit:contain;border-radius:6px;">工地現場管理</div>
     <div class="nav-links">
         <a href="#home">首頁</a>
         <a href="#features">功能</a>
+        <a href="#apps-script">Apps Script</a>
         <a href="#support">支援</a>
         <a href="#privacy">隱私權</a>
     </div>
 </nav>
 
 <section class="hero" id="home">
+    <img src="https://raw.githubusercontent.com/waamao/GCGL/main/favicon1.png" alt="工地現場管理 Logo" style="width:96px;height:96px;object-fit:contain;border-radius:22px;margin-bottom:28px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
     <div class="hero-eyebrow">iOS App · 專為工地設計</div>
     <h1>工地現場管理<span class="sub">讓現場管理更有效率</span></h1>
     <p class="hero-desc">從工程記錄、材料訂購到施工進度追蹤，所有現場資訊集中一處，隨時掌握全局。</p>
@@ -197,6 +199,171 @@
 
 <hr class="divider">
 
+<div class="doc" id="apps-script">
+        
+    <h2>Google Apps Script 設定說明</h2>
+    <div class="doc-sub">將訂單自動寫入 Google 試算表，只需幾個步驟即可完成設定。    <h3>步驟一：建立 Google 試算表</h3>
+    <p>前往 <a href="https://sheets.google.com" target="_blank">Google 試算表</a>，建立一個新的試算表，並記下試算表的網址（稍後用來部署腳本）。</p>
+
+    <h3>步驟二：開啟 Apps Script 編輯器</h3>
+    <p>在試算表中，點選上方選單「擴充功能」→「Apps Script」，開啟指令碼編輯器。</p>
+
+    <h3>步驟三：貼上腳本程式碼</h3>
+    <p>刪除編輯器中原有的程式碼，將以下程式碼完整貼入：</p>
+    <div style="background:var(--bg3);border-radius:12px;padding:24px;margin:16px 0;overflow-x:auto;">
+<pre style="color:var(--muted2);font-size:13px;line-height:1.7;white-space:pre-wrap;margin:0;font-family:SFMono-Regular,Menlo,Monaco,Consolas,monospace;">function doPost(e) {
+  var origin = "*";
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ "status": "error", "message": "無效的請求資料" })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+    var data = JSON.parse(e.postData.contents);
+    var siteName = data.AM || "未指定工地";
+    var items = data.items || [];
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("訂單");
+    if (!sheet) {
+      sheet = ss.insertSheet("訂單");
+      sheet.appendRow(["日期", "工地名稱", "分類", "品項名稱", "數量"]);
+      sheet.getRange("A1:E1").setFontWeight("bold").setBackground("#f3f4f6");
+    }
+    var formattedDate = Utilities.formatDate(new Date(), "GMT+8", "yyyy/MM/dd");
+    for (var i = 0; i &lt; items.length; i++) {
+      var item = items[i];
+      var cat = item.cat || "";
+      var itemName = item.PX || "未知品項";
+      var qty = item.SL || "未填數量";
+      sheet.appendRow([formattedDate, siteName, cat, itemName, qty]);
+    }
+    return ContentService.createTextOutput(
+      JSON.stringify({ "status": "success", "message": "訂單已成功寫入試算表！" })
+    ).setMimeType(ContentService.MimeType.JSON)
+      .setHeaders({
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Methods": "POST",
+        "Access-Control-Allow-Headers": "Content-Type"
+      });
+  } catch (err) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ "status": "error", "message": err.toString() })
+    ).setMimeType(ContentService.MimeType.JSON)
+      .setHeaders({ "Access-Control-Allow-Origin": origin });
+  }
+}
+
+function doOptions(e) {
+  return ContentService.createTextOutput("")
+    .setMimeType(ContentService.MimeType.TEXT)
+    .setHeaders({
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type"
+    });
+}</pre>
+    </div>
+
+    <h3>步驟四：部署為網路應用程式</h3>
+    <p>貼上程式碼後，依照以下步驟部署：</p>
+    <div class="faq">
+        <div class="faq-item"><div class="faq-q">① 點選右上角「部署」→「新增部署作業」</div><div class="faq-a">在部署類型選擇「網路應用程式」。</div></div>
+        <div class="faq-item"><div class="faq-q">② 設定執行身分與存取權限</div><div class="faq-a">「以哪個身分執行」選擇「我」；「誰可以存取」選擇「所有人」（含未登入者），這樣 App 才能無需登入即可寫入資料。</div></div>
+        <div class="faq-item"><div class="faq-q">③ 點選「部署」並授權</div><div class="faq-a">系統會請您授予腳本存取試算表的權限，請點選「授予存取權」並以 Google 帳號登入確認。</div></div>
+        <div class="faq-item"><div class="faq-q">④ 複製網路應用程式網址</div><div class="faq-a">部署完成後，畫面會顯示一組「網路應用程式網址」（格式為 <code style="color:var(--blue);font-size:12px;">https://script.google.com/macros/s/...</code>），請複製保存，下一步會用到。</div></div>
+    </div>
+
+    <h3>步驟五：在 App 中填入網址</h3>
+    <p>開啟「工地現場管理」App，前往「設定」→「Google 試算表連結」，將上一步複製的網路應用程式網址貼入並儲存。完成後，每次傳送訂單即會自動寫入您的試算表。</p>
+
+    <h3>試算表欄位說明</h3>
+    <h3>試算表欄位示意</h3>
+    <p>訂單資料會自動建立「訂單」分頁，以下為實際寫入格式範例：</p>
+    <div style="overflow-x:auto;margin:20px 0;">
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+            <thead>
+                <tr>
+                    <th style="background:#1c1c1e;border:1px solid #3a3a3c;padding:10px 14px;text-align:center;color:#6e6e73;font-weight:400;width:40px;"></th>
+                    <th style="background:#1a2d3d;border:1px solid #3a3a3c;padding:10px 14px;text-align:center;color:#7ec8e3;font-weight:500;">A</th>
+                    <th style="background:#1a2d3d;border:1px solid #3a3a3c;padding:10px 14px;text-align:center;color:#7ec8e3;font-weight:500;">B</th>
+                    <th style="background:#1a2d3d;border:1px solid #3a3a3c;padding:10px 14px;text-align:center;color:#7ec8e3;font-weight:500;">C</th>
+                    <th style="background:#1a2d3d;border:1px solid #3a3a3c;padding:10px 14px;text-align:center;color:#7ec8e3;font-weight:500;">D</th>
+                    <th style="background:#1a2d3d;border:1px solid #3a3a3c;padding:10px 14px;text-align:center;color:#7ec8e3;font-weight:500;">E</th>
+                </tr>
+                <tr>
+                    <td style="background:#1c1c1e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;color:#6e6e73;font-size:12px;">1</td>
+                    <td style="background:#2c2c2e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;font-weight:600;color:#f5f5f7;">日期</td>
+                    <td style="background:#2c2c2e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;font-weight:600;color:#f5f5f7;">工地名稱</td>
+                    <td style="background:#2c2c2e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;font-weight:600;color:#f5f5f7;">分類</td>
+                    <td style="background:#2c2c2e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;font-weight:600;color:#f5f5f7;">品項名稱</td>
+                    <td style="background:#2c2c2e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;font-weight:600;color:#f5f5f7;">數量</td>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="background:#1c1c1e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;color:#6e6e73;font-size:12px;">2</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">2026/06/27</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">信義路工地</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">水電</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">PVC 管 2 吋</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">20</td>
+                </tr>
+                <tr>
+                    <td style="background:#1c1c1e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;color:#6e6e73;font-size:12px;">3</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">2026/06/27</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">信義路工地</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">泥作</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">水泥 40kg</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">50</td>
+                </tr>
+                <tr>
+                    <td style="background:#1c1c1e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;color:#6e6e73;font-size:12px;">4</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">2026/06/27</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">信義路工地</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">鋼鐵</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">螺紋鋼筋 10mm</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">100</td>
+                </tr>
+                <tr>
+                    <td style="background:#1c1c1e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;color:#6e6e73;font-size:12px;">5</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#6e6e73;font-style:italic;background:#111111;">…</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#6e6e73;font-style:italic;background:#111111;">…</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#6e6e73;font-style:italic;background:#111111;">…</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#6e6e73;font-style:italic;background:#111111;">…</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#6e6e73;font-style:italic;background:#111111;">…</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:16px;margin-bottom:40px;">
+        <div style="background:#1a2d3d;border-radius:10px;padding:10px 12px;"><p style="font-size:12px;font-weight:600;color:#7ec8e3;margin:0 0 4px;">A · 日期</p><p style="font-size:11px;color:#aeaeb2;margin:0;">台北時間<br>yyyy/MM/dd</p></div>
+        <div style="background:#1a2d3d;border-radius:10px;padding:10px 12px;"><p style="font-size:12px;font-weight:600;color:#7ec8e3;margin:0 0 4px;">B · 工地名稱</p><p style="font-size:11px;color:#aeaeb2;margin:0;">App 設定的工地名稱</p></div>
+        <div style="background:#1a2d3d;border-radius:10px;padding:10px 12px;"><p style="font-size:12px;font-weight:600;color:#7ec8e3;margin:0 0 4px;">C · 分類</p><p style="font-size:11px;color:#aeaeb2;margin:0;">材料分類名稱</p></div>
+        <div style="background:#1a2d3d;border-radius:10px;padding:10px 12px;"><p style="font-size:12px;font-weight:600;color:#7ec8e3;margin:0 0 4px;">D · 品項名稱</p><p style="font-size:11px;color:#aeaeb2;margin:0;">材料品項名稱</p></div>
+        <div style="background:#1a2d3d;border-radius:10px;padding:10px 12px;"><p style="font-size:12px;font-weight:600;color:#7ec8e3;margin:0 0 4px;">E · 數量</p><p style="font-size:11px;color:#aeaeb2;margin:0;">訂購數量</p></div>
+    </div>
+<!-- 以下是 faq 區塊原本的欄位說明，改為隱藏 -->
+    <div style="display:none">
+    <p>訂單資料會自動建立「訂單」分頁，並依照以下格式寫入每筆紀錄：</p>
+    <div class="faq">
+        <div class="faq-item"><div class="faq-q">A 欄：日期</div><div class="faq-a">訂單傳送當天日期，格式為 yyyy/MM/dd（台北時間）。</div></div>
+        <div class="faq-item"><div class="faq-q">B 欄：工地名稱</div><div class="faq-a">App 中設定的工地名稱（即 AM 欄位值）。</div></div>
+        <div class="faq-item"><div class="faq-q">C 欄：分類</div><div class="faq-a">材料的分類名稱。</div></div>
+        <div class="faq-item"><div class="faq-q">D 欄：品項名稱</div><div class="faq-a">材料的品項名稱（即 PX 欄位值）。</div></div>
+        <div class="faq-item"><div class="faq-q">E 欄：數量</div><div class="faq-a">訂購數量（即 SL 欄位值）。</div></div>
+    </div>
+
+    <h3>常見問題</h3>
+    <div class="faq">
+        <div class="faq-item"><div class="faq-q">為什麼資料沒有寫入試算表？</div><div class="faq-a">請確認：① 網路應用程式網址已正確貼入 App；② 部署時「誰可以存取」已設為「所有人」；③ 已授予腳本讀寫試算表的權限。若修改過腳本，需重新部署（建立新版本）才會生效。</div></div>
+        <div class="faq-item"><div class="faq-q">修改腳本後需要重新設定 App 嗎？</div><div class="faq-a">若只是修改腳本邏輯並重新部署（選「更新現有部署作業」），網址不會改變，App 不需重新設定。若建立全新部署，網址會不同，需重新貼入 App。</div></div>
+        <div class="faq-item"><div class="faq-q">試算表可以改名或搬移嗎？</div><div class="faq-a">試算表可以改名，腳本是以 ID 綁定，不受名稱影響。但請勿刪除試算表，否則腳本將無法寫入資料。</div></div>
+    </div>
+</div></div>
+</div>
+
+<hr class="divider">
+
 <div class="doc" id="support">
     <h2>技術支援</h2>
     <div class="doc-sub">如有任何問題，我們很樂意協助您解決。</div>
@@ -257,10 +424,10 @@
     <span>© 2026 CHANG YOU WEI</span>
     <div>
         <a href="#home">首頁</a>
+        <a href="#apps-script">Apps Script</a>
         <a href="#support">支援</a>
         <a href="#privacy">隱私權政策</a>
     </div>
 </footer>
-
 </body>
 </html>
