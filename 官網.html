@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工地現場管理</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #000000;
+            --bg2: #111111;
+            --bg3: #1c1c1e;
+            --border: #2c2c2e;
+            --text: #f5f5f7;
+            --muted: #6e6e73;
+            --muted2: #aeaeb2;
+            --pink: #e57ca0;
+            --blue: #7ec8e3;
+        }
+        html { scroll-behavior: smooth; }
+        body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+            background: rgba(0,0,0,0.72); backdrop-filter: saturate(180%) blur(20px);
+            border-bottom: 0.5px solid rgba(255,255,255,0.08);
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 44px; height: 48px;
+        }
+        .nav-logo { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+        .nav-links { display: flex; gap: 32px; }
+        .nav-links a { font-size: 13.5px; color: var(--muted2); text-decoration: none; transition: color 0.15s; }
+        .nav-links a:hover { color: var(--text); }
+
+        .hero {
+            position: relative; overflow: hidden;
+            min-height: 100vh; display: flex; flex-direction: column;
+            align-items: flex-start; justify-content: center;
+            text-align: left; padding: 120px 44px 80px;
+            background-image: url('hero-bg.png');
+            background-size: cover;
+            background-position: center 35%;
+        }
+        .hero::before { content: ""; position: absolute; inset: 0; background: var(--bg); opacity: 0.55; z-index: 0; }
+        .hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.25) 45%, rgba(0,0,0,0.6) 100%), radial-gradient(ellipse 80% 60% at 50% 0%, rgba(229,124,160,0.12) 0%, transparent 70%); z-index: 1; }
+        .hero > * { position: relative; z-index: 2; }
+        .hero-top-row {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            align-self: center;
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .appstore-badge {
+            display: inline-block;
+            line-height: 0;
+            transition: transform 0.2s ease, opacity 0.2s ease;
+        }
+        .appstore-badge:hover { transform: scale(1.04); opacity: 0.85; }
+        .appstore-badge img { height: 64px; width: auto; display: block; }
+        @media (max-width: 480px) {
+            .hero-top-row { gap: 16px; }
+            .appstore-badge img { height: 44px; }
+            .hero-icon-wrap { width: 72px; height: 72px; border-radius: 18px; }
+            .hero-icon-wrap img { border-radius: 18px; }
+            .hero-icon-wrap::after { border-radius: 18px; }
+        }
+        @media (min-width: 481px) and (max-width: 768px) {
+            .hero-icon-wrap { width: 84px; height: 84px; border-radius: 18px; }
+            .hero-icon-wrap img { border-radius: 18px; }
+            .hero-icon-wrap::after { border-radius: 18px; }
+        }
+        @media (max-width: 768px) {
+            .hero { background-position: center 20%; }
+            .hero::before { opacity: 0.35; }
+            .hero::after { background: linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.15) 45%, rgba(0,0,0,0.5) 100%), radial-gradient(ellipse 80% 60% at 50% 0%, rgba(229,124,160,0.12) 0%, transparent 70%); }
+        }
+        .hero-icon-wrap {
+            display: block;
+            position: relative;
+            width: 96px; height: 96px;
+            border-radius: 18px;
+            padding: 3px;
+            background: linear-gradient(145deg, rgba(255,255,255,0.5), rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.15) 60%, rgba(255,255,255,0.35));
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            transition: transform 0.2s ease, opacity 0.2s ease;
+        }
+        .hero-icon-wrap:hover { transform: scale(1.04); opacity: 0.9; }
+        .hero-icon-wrap img {
+            width: 100%; height: 100%;
+            object-fit: contain;
+            border-radius: 18px;
+            display: block;
+            position: relative;
+            z-index: 1;
+        }
+        .hero-icon-wrap::after {
+            content: "";
+            position: absolute;
+            inset: 3px;
+            border-radius: 18px;
+            z-index: 2;
+            pointer-events: none;
+            background: linear-gradient(115deg,
+                transparent 20%,
+                rgba(255,255,255,0) 35%,
+                rgba(255,255,255,0.75) 48%,
+                rgba(255,255,255,0) 61%,
+                transparent 80%);
+            background-size: 260% 260%;
+            background-position: -120% -120%;
+            mix-blend-mode: overlay;
+            animation: iconShine 4.5s ease-in-out infinite;
+        }
+        @keyframes iconShine {
+            0% { background-position: -120% -120%; }
+            35% { background-position: 120% 120%; }
+            100% { background-position: 120% 120%; }
+        }
+        .hero-eyebrow { font-size: 13.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pink); margin-bottom: 9px; }
+        .hero h1 { font-size: 18px; font-weight: 700; line-height: 1.05; letter-spacing: -0.04em; margin-bottom: 28px; }
+        .hero h1 .sub { display: block; color: var(--muted); font-weight: 500; font-size: 13.5px; margin-top: 9px; }
+        .hero-desc { font-size: 15px; color: var(--muted2); line-height: 1.6; max-width: 600px; margin: 0 0 64px; letter-spacing: -0.01em; }
+        .hero-phones { display: flex; gap: 16px; justify-content: flex-start; align-items: flex-end; }
+        .hero-phones img { border-radius: 18px; box-shadow: 0 40px 100px rgba(0,0,0,0.8), 0 0 0 0.5px rgba(255,255,255,0.08); }
+        .phone-main { width: 260px; }
+        .phone-side { width: 190px; opacity: 0.55; margin-bottom: 24px; }
+
+        .divider { border: none; border-top: 0.5px solid var(--border); }
+
+        .section { padding: 120px 44px; max-width: 1200px; margin: 0 auto; }
+        .section-eyebrow { font-size: 13.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pink); margin-bottom: 16px; }
+        .section-headline { font-size: 36px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.08; margin-bottom: 80px; }
+        .section-headline .dim { color: var(--muted); }
+
+        .feature-carousel {
+            display: flex;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+            margin: 0 -44px;
+            padding: 0 44px;
+            scrollbar-width: none;
+        }
+        .feature-carousel::-webkit-scrollbar { display: none; }
+        .feature-slide {
+            flex: 0 0 100%;
+            scroll-snap-align: start;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: center;
+            padding: 0 4px;
+        }
+        .feature-dots { display: flex; justify-content: center; gap: 8px; margin-top: 32px; }
+        .feature-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); cursor: pointer; transition: background 0.2s, transform 0.2s; }
+        .feature-dot.active { background: var(--pink); transform: scale(1.3); }
+        .feature-phone { display: flex; justify-content: center; }
+        .feature-phone img { width: 280px; border-radius: 18px; box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 0 0.5px rgba(255,255,255,0.08); }
+        .feature-copy { padding: 0 24px; }
+        .feature-tag { display: inline-block; font-size: 13.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pink); margin-bottom: 20px; }
+        .feature-copy h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.1; margin-bottom: 20px; }
+        .feature-copy .dim { color: var(--muted); }
+        .feature-list { list-style: none; display: flex; flex-direction: column; gap: 9px; margin-top: 28px; }
+        .feature-list li { display: flex; gap: 12px; align-items: flex-start; font-size: 15px; color: var(--muted2); line-height: 1.5; }
+        .feature-list li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--pink); flex-shrink: 0; margin-top: 8px; }
+
+        .doc { max-width: 760px; margin: 0 auto; padding: 100px 44px; }
+        .doc-wide { max-width: 1120px; }
+        .doc h2 { font-size: 36px; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 12px; }
+        .doc-sub { font-size: 15px; color: var(--muted2); margin-bottom: 56px; }
+        .doc h3 { font-size: 18px; font-weight: 600; margin: 40px 0 12px; }
+        .doc p, .doc li { font-size: 15px; color: var(--muted2); line-height: 1.85; }
+        .doc ul { padding-left: 22px; margin-bottom: 12px; }
+        .doc li { margin-bottom: 6px; }
+        .doc a { color: var(--blue); text-decoration: none; }
+
+        .steps { display: flex; flex-direction: column; gap: 2px; margin-top: 16px; }
+        .step-item { display: flex; gap: 24px; background: var(--bg3); border-radius: 18px; padding: 22px 26px; margin-bottom: 2px; align-items: center; min-height: 112px; }
+        .step-main { display: flex; gap: 20px; flex: 1; min-width: 0; align-items: flex-start; }
+        .step-num { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--pink); color: #000; font-size: 13.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+        .step-body { min-width: 0; }
+        .step-body .step-title { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+        .step-body .step-desc { font-size: 15px; color: var(--muted2); line-height: 1.75; }
+
+        .faq { display: flex; flex-direction: column; gap: 2px; }
+        .faq-item { background: var(--bg3); border-radius: 18px; padding: 22px 26px; margin-bottom: 2px; }
+        .deploy-carousel {
+            display: flex;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+            gap: 10px;
+            margin-top: 16px;
+            scrollbar-width: none;
+        }
+        .deploy-carousel::-webkit-scrollbar { display: none; }
+        .deploy-card {
+            flex: 0 0 100%;
+            scroll-snap-align: start;
+            background: var(--bg3);
+            border-radius: 18px;
+            padding: 22px 26px;
+        }
+        .faq-q { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+        .faq-a { font-size: 15px; color: var(--muted2); line-height: 1.75; }
+        .contact-box { background: var(--bg3); border-radius: 18px; padding: 32px 36px; margin-top: 20px; }
+        .contact-box .name { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+        .contact-box .note { font-size: 13.5px; color: var(--muted); margin-top: 12px; }
+
+        footer { padding: 40px 44px; border-top: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; color: var(--muted); }
+        footer a { color: var(--muted); text-decoration: none; margin-left: 24px; }
+        footer a:hover { color: var(--text); }
+
+        @media (max-width: 768px) {
+            nav { padding: 0 20px; }
+            .hero { padding-left: 12px; padding-right: 12px; }
+            .section { padding: 80px 20px; }
+            .feature-carousel { margin: 0 -20px; padding: 0 20px; }
+            .feature-slide { grid-template-columns: 1fr; }
+            .feature-phone img { width: 240px; }
+            .doc { padding: 80px 20px; }
+            footer { flex-direction: column; gap: 16px; text-align: center; }
+            footer a { margin: 0 12px; }
+            .phone-main { width: 180px; }
+            .phone-side { width: 130px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="#home" class="nav-logo" style="display:flex;align-items:center;text-decoration:none;"><img src="https://raw.githubusercontent.com/waamao/GCGL/main/favicon1.png" alt="首頁" style="width:28px;height:28px;object-fit:contain;border-radius:18px;"></a>
+    <div class="nav-links">
+        <a href="#features">功能</a>
+        <a href="#tutorial">使用教學</a>
+        <a href="#support">支援</a>
+        <a href="#privacy">隱私權</a>
+    </div>
+</nav>
+
+<section class="hero" id="home">
+    <div class="hero-top-row">
+        <a class="hero-icon-wrap" href="https://apps.apple.com/tw/app/%E5%B7%A5%E5%9C%B0%E7%8F%BE%E5%A0%B4%E7%AE%A1%E7%90%86/id6783778346" target="_blank" rel="noopener">
+            <img src="https://raw.githubusercontent.com/waamao/GCGL/main/favicon1.png" alt="工地現場管理 Logo">
+        </a>
+        <a class="appstore-badge" href="https://apps.apple.com/tw/app/%E5%B7%A5%E5%9C%B0%E7%8F%BE%E5%A0%B4%E7%AE%A1%E7%90%86/id6783778346" target="_blank" rel="noopener">
+            <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/zh-tw?size=250x83" alt="下載 App Store">
+        </a>
+    </div>
+    <div class="hero-eyebrow">工地現場管理</div>
+    <h1>專為工地使用環境設計<span class="sub">讓現場管理更輕鬆</span></h1>
+    <p class="hero-desc">從工程記錄、施工進度追蹤、估驗計價進度、材料訂購到多種簡易報表，所有現場資訊隨時掌握。</p>
+    <div class="hero-phones">
+        
+    </div>
+</section>
+
+<hr class="divider">
+
+<div class="section" id="features">
+    <div class="section-headline">你需要的，<span class="dim">全都在這。</span></div>
+
+    <div class="feature-carousel" id="featureCarousel">
+        <div class="feature-slide">
+            <div class="feature-phone"><img src="favicon2.png" alt="月曆記錄"></div>
+            <div class="feature-copy">
+                <div class="feature-tag">工程記錄</div>
+                <h3>月曆式管理每日施工。</h3>
+                <ul class="feature-list">
+                    <li>記錄施工項目、樓層與出工人數</li>
+                    <li>月曆彩色點快速辨識記錄狀況</li>
+                    <li>支援工程記錄、材料訂單、備忘錄</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="feature-slide">
+            <div class="feature-phone"><img src="favicon3.png" alt="工程進度"></div>
+            <div class="feature-copy">
+                <div class="feature-tag">工程進度</div>
+                <h3>各種膠囊進度一目瞭然。</h3>
+                <ul class="feature-list">
+                    <li>切換工項/樓層追蹤施工進度</li>
+                    <li>記錄施工過程各階段日期及匯出甘特圖</li>
+                    <li>各廠商、工項及樓層出工人數自動統計</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="feature-slide">
+            <div class="feature-phone"><img src="favicon4.png" alt="案場資訊"></div>
+            <div class="feature-copy">
+                <div class="feature-tag">案場資訊</div>
+                <h3>案場計價進度即時掌握。</h3>
+                <ul class="feature-list">
+                    <li>案場總價及追加工程進度明細</li>
+                    <li>施工廠商分別追蹤計價比例</li>
+                    <li>追加工程款隨時記錄</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="feature-slide">
+            <div class="feature-phone"><img src="favicon5.png" alt="材料訂購"></div>
+            <div class="feature-copy">
+                <div class="feature-tag">材料訂購</div>
+                <h3>現場直接訂購施工材料。</h3>
+                <ul class="feature-list">
+                    <li>購物車式介面快速勾選品項</li>
+                    <li>顯示歷史訂購數量供你參考</li>
+                    <li><span style="display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap;">一鍵傳送訂單至 <img src="https://cdn.simpleicons.org/line/06C755" alt="LINE" style="width:15px;height:15px;vertical-align:-2px;">Line 及 <img src="https://cdn.simpleicons.org/googlesheets/0F9D58" alt="Google試算表" style="width:15px;height:15px;vertical-align:-2px;">Google試算表</span></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="feature-slide">
+            <div class="feature-phone"><img src="favicon6.png" alt="簡易報表"></div>
+            <div class="feature-copy">
+                <div class="feature-tag">簡易報表</div>
+                <h3>各種簡易報表一鍵生產。</h3>
+                <ul class="feature-list">
+                    <li>工地照片/會議記錄表</li>
+                    <li>從PDF圖紙貼入標記現場照片及說明文字</li>
+                    <li>匯出所有案場日誌及材料訂購清單</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="feature-slide">
+            <div class="feature-phone"><img src="favicon7.png" alt="計價管理"></div>
+            <div class="feature-copy">
+                <div class="feature-tag">計價管理</div>
+                <h3>即時送出施工報價單。</h3>
+                <ul class="feature-list">
+                    <li>簡易計價表匯出快速分享查看</li>
+                    <li>施工廠商追加報價現場簽收</li>
+                    <li>一鍵匯出廠商所有請款明細</li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="feature-dots" id="featureDots"></div>
+</div>
+
+<script>
+    (function() {
+        const carousel = document.getElementById('featureCarousel');
+        const dotsWrap = document.getElementById('featureDots');
+        const slides = carousel.querySelectorAll('.feature-slide');
+        slides.forEach((_, i) => {
+            const dot = document.createElement('div');
+            dot.className = 'feature-dot' + (i === 0 ? ' active' : '');
+            dot.addEventListener('click', () => {
+                carousel.scrollTo({ left: carousel.clientWidth * i, behavior: 'smooth' });
+            });
+            dotsWrap.appendChild(dot);
+        });
+        const dots = dotsWrap.querySelectorAll('.feature-dot');
+        let ticking = false;
+        carousel.addEventListener('scroll', () => {
+            if (ticking) return;
+            ticking = true;
+            requestAnimationFrame(() => {
+                const idx = Math.round(carousel.scrollLeft / carousel.clientWidth);
+                dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+                ticking = false;
+            });
+        });
+    })();
+</script>
+
+<hr class="divider">
+
+<div class="doc doc-wide" id="tutorial">
+    <h2>使用教學</h2>
+    <div class="doc-sub">跟著以下步驟，5 分鐘上手「工地現場管理」。</div>
+
+    <div class="steps">
+        <div class="step-item">
+            <div class="step-num">1</div>
+            <div class="step-body">
+                <div class="step-title">建立案場</div>
+                <div class="step-desc">開啟 App，點選下排按鈕列中間的案場資訊，點選<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:middle;margin:0 2px;"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>新增案場，輸入案場名稱及各項案場資訊，即可開始管理該工地的所有記錄。</div>
+            </div>
+        </div>
+        <div class="step-item">
+            <div class="step-num">2</div>
+            <div class="step-body">
+                <div class="step-title">新增施工廠商</div>
+                <div class="step-desc">在案場頁面裡，點選「公司」膠囊後，再點選右上角鉛筆<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin:0 2px;"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>，輸入你的公司名稱及下方新增你的施工廠商，回到你的案場膠囊下施工廠商<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:middle;margin:0 2px;"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>，把施工廠商加到對應案場內。</div>
+            </div>
+        </div>
+        <div class="step-item">
+            <div class="step-num">3</div>
+            <div class="step-body">
+                <div class="step-title">新增工程記錄</div>
+                <div class="step-desc">切換到按鈕列第一個「月曆」，點選右上角的「+」按鈕後，選擇你要記錄的種類（記錄、備忘錄及你的出勤），選記錄後點選案場及施工廠商，再（新增施工項目）開始記錄你的工地。</div>
+            </div>
+        </div>
+        <div class="step-item">
+            <div class="step-num">4</div>
+            <div class="step-body">
+                <div class="step-title">管理案場估驗計價</div>
+                <div class="step-desc">在案場頁裡編輯模式，主卡及施工廠商卡點選「+計價表」，開始記錄案場的估驗計價進度。</div>
+            </div>
+        </div>
+        <div class="step-item">
+            <div class="step-num">5</div>
+            <div class="step-body">
+                <div class="step-title">建立材料分類品項清單</div>
+                <div class="step-desc">在設定頁點選匯入材料清單的「查看說明」，依指示建立對應的Excel檔案，批量匯入分類及品項清單，省去逐筆手動輸入的時間。</div>
+            </div>
+        </div>
+        <div class="step-item">
+            <div class="step-num">6</div>
+            <div class="step-body">
+                <div class="step-title">開始訂購材料</div>
+                <div class="step-desc">進入材料頁面，選擇材料分類及品項，或以搜尋方式尋找材料名稱（支援輸入112可搜尋到1-1/2"），點選右上角購物車輸入訂購數量，完成後一鍵傳送訂單至 LINE和Google 試算表，並在月曆上顯示訂購日期及品項列表。</div>
+            </div>
+        </div>
+    </div>
+
+    <h3 id="apps-script" style="margin-top:56px;">Google Apps Script 設定說明</h3>
+    <div class="doc-sub">將訂單自動寫入 Google 試算表，只需幾個步驟即可完成設定。    <h3>步驟一：建立 Google 試算表</h3>
+    <p>前往 <a href="https://sheets.google.com" target="_blank">Google 試算表</a>，建立一個新的試算表，並記下試算表的網址（稍後用來部署腳本）。</p>
+
+    <h3>步驟二：開啟 Apps Script 編輯器</h3>
+    <p>在試算表中，點選上方選單「擴充功能」→「Apps Script」，開啟指令碼編輯器。</p>
+
+    <h3>步驟三：貼上腳本程式碼</h3>
+    <p>刪除編輯器中原有的程式碼，將以下程式碼完整貼入：
+    <button onclick="
+        var code = document.getElementById('apps-script-code').innerText;
+        navigator.clipboard.writeText(code).then(function(){
+            var btn = this;
+            btn.textContent='已複製！';
+            btn.style.background='#30d158';
+            btn.style.color='#000';
+            setTimeout(function(){ btn.textContent='複製程式碼'; btn.style.background=''; btn.style.color=''; }, 2000);
+        }.bind(this));
+    " style="margin-left:12px;padding:6px 16px;border-radius:980px;border:1px solid #3a3a3c;background:transparent;color:#7ec8e3;font-size:13.5px;cursor:pointer;transition:all 0.15s;">複製程式碼</button>
+    </p>
+    <div style="background:var(--bg3);border-radius:18px;padding:24px;margin:16px 0;overflow-x:auto;display:none;">
+<pre id="apps-script-code" style="color:var(--muted2);font-size:13.5px;line-height:1.7;white-space:pre-wrap;margin:0;font-family:SFMono-Regular,Menlo,Monaco,Consolas,monospace;">function doPost(e) {
+  var origin = "*";
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ "status": "error", "message": "無效的請求資料" })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+    var data = JSON.parse(e.postData.contents);
+    var siteName = data.AM || "未指定工地";
+    var items = data.items || [];
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("訂單");
+    if (!sheet) {
+      sheet = ss.insertSheet("訂單");
+      sheet.appendRow(["日期", "工地名稱", "分類", "品項名稱", "數量"]);
+      sheet.getRange("A1:E1").setFontWeight("bold").setBackground("#f3f4f6");
+    }
+    var formattedDate = Utilities.formatDate(new Date(), "GMT+8", "yyyy/MM/dd");
+    for (var i = 0; i &lt; items.length; i++) {
+      var item = items[i];
+      var cat = item.cat || "";
+      var itemName = item.PX || "未知品項";
+      var qty = item.SL || "未填數量";
+      sheet.appendRow([formattedDate, siteName, cat, itemName, qty]);
+    }
+    return ContentService.createTextOutput(
+      JSON.stringify({ "status": "success", "message": "訂單已成功寫入試算表！" })
+    ).setMimeType(ContentService.MimeType.JSON)
+      .setHeaders({
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Methods": "POST",
+        "Access-Control-Allow-Headers": "Content-Type"
+      });
+  } catch (err) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ "status": "error", "message": err.toString() })
+    ).setMimeType(ContentService.MimeType.JSON)
+      .setHeaders({ "Access-Control-Allow-Origin": origin });
+  }
+}
+
+function doOptions(e) {
+  return ContentService.createTextOutput("")
+    .setMimeType(ContentService.MimeType.TEXT)
+    .setHeaders({
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type"
+    });
+}</pre>
+    </div>
+
+    <h3>步驟四：部署為網路應用程式</h3>
+    <p>貼上程式碼後，依照以下步驟部署：</p>
+    <div class="deploy-carousel" id="deployCarousel">
+        <div class="deploy-card"><div class="faq-q">① 點選右上角「部署」→「新增部署作業」</div><div class="faq-a">在部署類型選擇「網路應用程式」。</div></div>
+        <div class="deploy-card"><div class="faq-q">② 設定執行身分與存取權限</div><div class="faq-a">「以哪個身分執行」選擇「我」；「誰可以存取」選擇「所有人」（含未登入者），這樣 App 才能無需登入即可寫入資料。</div></div>
+        <div class="deploy-card"><div class="faq-q">③ 點選「部署」並授權</div><div class="faq-a">系統會請您授予腳本存取試算表的權限，請點選「授予存取權」並以 Google 帳號登入確認。</div></div>
+        <div class="deploy-card"><div class="faq-q">④ 複製網路應用程式網址</div><div class="faq-a">部署完成後，畫面會顯示一組「網路應用程式網址」（格式為 <code style="color:var(--blue);font-size:13.5px;">https://script.google.com/macros/s/...</code>），請複製保存，下一步會用到。</div></div>
+    </div>
+    <div class="feature-dots" id="deployDots"></div>
+    <script>
+        (function() {
+            const carousel = document.getElementById('deployCarousel');
+            const dotsWrap = document.getElementById('deployDots');
+            const cards = carousel.querySelectorAll('.deploy-card');
+            cards.forEach((_, i) => {
+                const dot = document.createElement('div');
+                dot.className = 'feature-dot' + (i === 0 ? ' active' : '');
+                dot.addEventListener('click', () => {
+                    carousel.scrollTo({ left: carousel.clientWidth * i, behavior: 'smooth' });
+                });
+                dotsWrap.appendChild(dot);
+            });
+            const dots = dotsWrap.querySelectorAll('.feature-dot');
+            let ticking = false;
+            carousel.addEventListener('scroll', () => {
+                if (ticking) return;
+                ticking = true;
+                requestAnimationFrame(() => {
+                    const idx = Math.round(carousel.scrollLeft / carousel.clientWidth);
+                    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+                    ticking = false;
+                });
+            });
+        })();
+    </script>
+
+    <h3>步驟五：在 App 中填入網址</h3>
+    <p>開啟「工地現場管理」App，前往「設定」→「Google 試算表連結」，將上一步複製的網路應用程式網址貼入並儲存。完成後，每次傳送訂單即會自動寫入您的試算表。</p>
+
+    <h3>試算表欄位說明</h3>
+    <h3>試算表欄位示意</h3>
+    <p>訂單資料會自動建立「訂單」分頁，以下為實際寫入格式範例：</p>
+    <div style="overflow-x:auto;margin:20px 0;">
+        <table style="width:100%;border-collapse:collapse;font-size:13.5px;">
+            <thead>
+                <tr>
+                    <th style="background:#1c1c1e;border:1px solid #3a3a3c;padding:10px 14px;text-align:center;color:#6e6e73;font-weight:400;width:40px;"></th>
+                    <th style="background:#1a2d3d;border:1px solid #3a3a3c;padding:10px 14px;text-align:center;color:#7ec8e3;font-weight:500;">A</th>
+                    <th style="background:#1a2d3d;border:1px solid #3a3a3c;padding:10px 14px;text-align:center;color:#7ec8e3;font-weight:500;">B</th>
+                    <th style="background:#1a2d3d;border:1px solid #3a3a3c;padding:10px 14px;text-align:center;color:#7ec8e3;font-weight:500;">C</th>
+                    <th style="background:#1a2d3d;border:1px solid #3a3a3c;padding:10px 14px;text-align:center;color:#7ec8e3;font-weight:500;">D</th>
+                    <th style="background:#1a2d3d;border:1px solid #3a3a3c;padding:10px 14px;text-align:center;color:#7ec8e3;font-weight:500;">E</th>
+                </tr>
+                <tr>
+                    <td style="background:#1c1c1e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;color:#6e6e73;font-size:13.5px;">1</td>
+                    <td style="background:#2c2c2e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;font-weight:600;color:#f5f5f7;">日期</td>
+                    <td style="background:#2c2c2e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;font-weight:600;color:#f5f5f7;">工地名稱</td>
+                    <td style="background:#2c2c2e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;font-weight:600;color:#f5f5f7;">分類</td>
+                    <td style="background:#2c2c2e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;font-weight:600;color:#f5f5f7;">品項名稱</td>
+                    <td style="background:#2c2c2e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;font-weight:600;color:#f5f5f7;">數量</td>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="background:#1c1c1e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;color:#6e6e73;font-size:13.5px;">2</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">2026/06/27</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">信義路工地</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">水電</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">PVC 管 2 吋</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">20</td>
+                </tr>
+                <tr>
+                    <td style="background:#1c1c1e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;color:#6e6e73;font-size:13.5px;">3</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">2026/06/27</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">信義路工地</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">泥作</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">水泥 40kg</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">50</td>
+                </tr>
+                <tr>
+                    <td style="background:#1c1c1e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;color:#6e6e73;font-size:13.5px;">4</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">2026/06/27</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">信義路工地</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">鋼鐵</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">螺紋鋼筋 10mm</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#f5f5f7;background:#111111;">100</td>
+                </tr>
+                <tr>
+                    <td style="background:#1c1c1e;border:1px solid #3a3a3c;padding:8px 14px;text-align:center;color:#6e6e73;font-size:13.5px;">5</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#6e6e73;font-style:italic;background:#111111;">…</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#6e6e73;font-style:italic;background:#111111;">…</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#6e6e73;font-style:italic;background:#111111;">…</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#6e6e73;font-style:italic;background:#111111;">…</td>
+                    <td style="border:1px solid #3a3a3c;padding:8px 14px;color:#6e6e73;font-style:italic;background:#111111;">…</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:16px;margin-bottom:40px;">
+        <div style="background:#1a2d3d;border-radius:18px;padding:10px 12px;"><p style="font-size:13.5px;font-weight:600;color:#7ec8e3;margin:0 0 4px;">A · 日期</p><p style="font-size:13.5px;color:#aeaeb2;margin:0;">台北時間<br>yyyy/MM/dd</p></div>
+        <div style="background:#1a2d3d;border-radius:18px;padding:10px 12px;"><p style="font-size:13.5px;font-weight:600;color:#7ec8e3;margin:0 0 4px;">B · 工地名稱</p><p style="font-size:13.5px;color:#aeaeb2;margin:0;">App 設定的工地名稱</p></div>
+        <div style="background:#1a2d3d;border-radius:18px;padding:10px 12px;"><p style="font-size:13.5px;font-weight:600;color:#7ec8e3;margin:0 0 4px;">C · 分類</p><p style="font-size:13.5px;color:#aeaeb2;margin:0;">材料分類名稱</p></div>
+        <div style="background:#1a2d3d;border-radius:18px;padding:10px 12px;"><p style="font-size:13.5px;font-weight:600;color:#7ec8e3;margin:0 0 4px;">D · 品項名稱</p><p style="font-size:13.5px;color:#aeaeb2;margin:0;">材料品項名稱</p></div>
+        <div style="background:#1a2d3d;border-radius:18px;padding:10px 12px;"><p style="font-size:13.5px;font-weight:600;color:#7ec8e3;margin:0 0 4px;">E · 數量</p><p style="font-size:13.5px;color:#aeaeb2;margin:0;">訂購數量</p></div>
+    </div>
+<!-- 以下是 faq 區塊原本的欄位說明，改為隱藏 -->
+    <div style="display:none">
+    <p>訂單資料會自動建立「訂單」分頁，並依照以下格式寫入每筆紀錄：</p>
+    <div class="faq">
+        <div class="faq-item"><div class="faq-q">A 欄：日期</div><div class="faq-a">訂單傳送當天日期，格式為 yyyy/MM/dd（台北時間）。</div></div>
+        <div class="faq-item"><div class="faq-q">B 欄：工地名稱</div><div class="faq-a">App 中設定的工地名稱（即 AM 欄位值）。</div></div>
+        <div class="faq-item"><div class="faq-q">C 欄：分類</div><div class="faq-a">材料的分類名稱。</div></div>
+        <div class="faq-item"><div class="faq-q">D 欄：品項名稱</div><div class="faq-a">材料的品項名稱（即 PX 欄位值）。</div></div>
+        <div class="faq-item"><div class="faq-q">E 欄：數量</div><div class="faq-a">訂購數量（即 SL 欄位值）。</div></div>
+    </div>
+
+    <h3>常見問題</h3>
+    <div class="faq">
+        <div class="faq-item"><div class="faq-q">為什麼資料沒有寫入試算表？</div><div class="faq-a">請確認：① 網路應用程式網址已正確貼入 App；② 部署時「誰可以存取」已設為「所有人」；③ 已授予腳本讀寫試算表的權限。若修改過腳本，需重新部署（建立新版本）才會生效。</div></div>
+        <div class="faq-item"><div class="faq-q">修改腳本後需要重新設定 App 嗎？</div><div class="faq-a">若只是修改腳本邏輯並重新部署（選「更新現有部署作業」），網址不會改變，App 不需重新設定。若建立全新部署，網址會不同，需重新貼入 App。</div></div>
+        <div class="faq-item"><div class="faq-q">試算表可以改名或搬移嗎？</div><div class="faq-a">試算表可以改名，腳本是以 ID 綁定，不受名稱影響。但請勿刪除試算表，否則腳本將無法寫入資料。</div></div>
+    </div>
+</div></div>
+</div>
+
+<hr class="divider">
+
+<div class="doc" id="support">
+    <h2>技術支援</h2>
+    <div class="doc-sub">如有任何問題，我們很樂意協助您解決。</div>
+
+    <h3>常見問題</h3>
+    <div class="faq">
+        <div class="faq-item"><div class="faq-q">如何備份我的資料？</div><div class="faq-a">訂閱 Pro 方案後，資料會自動同步至您的 iCloud Drive。您也可以在設定頁手動觸發備份。</div></div>
+        <div class="faq-item"><div class="faq-q">刪除 App 後資料會消失嗎？</div><div class="faq-a">訂閱 Pro 方案的用戶，資料儲存於 iCloud，重裝 App 後可自動還原。未訂閱用戶的資料僅儲存於本機，刪除 App 後將無法恢復。</div></div>
+        <div class="faq-item"><div class="faq-q">如何恢復訂閱？</div><div class="faq-a">開啟 App 後，在付費牆頁面點擊「恢復購買」，系統將自動恢復您原有的訂閱狀態。</div></div>
+        <div class="faq-item"><div class="faq-q">如何取消訂閱？</div><div class="faq-a">前往 iPhone「設定」→ 點選您的 Apple ID →「訂閱」→ 找到「工地現場管理」→ 取消訂閱。</div></div>
+        <div class="faq-item"><div class="faq-q">免費試用期結束後會自動扣款嗎？</div><div class="faq-a">是的，試用期結束後會自動續訂並扣款。如不想繼續訂閱，請在試用期結束前取消。</div></div>
+        <div class="faq-item"><div class="faq-q">匯出的 PDF 或 Excel 在哪裡？</div><div class="faq-a">匯出後會透過 iOS 的分享功能讓您選擇儲存位置，例如「檔案」App 或傳送給其他人。</div></div>
+    </div>
+</div>
+
+<hr class="divider">
+
+<div class="doc" id="privacy">
+    <h2>隱私權政策</h2>
+    <div class="doc-sub">最後更新：2026 年 6 月 26 日</div>
+    <p>感謝您使用「工地現場管理」。本隱私權政策說明我們如何收集、使用及保護您的個人資料。</p>
+    <h3>1. 資料收集</h3>
+    <p>本應用程式以離線為主，所有工程記錄、案場資訊、材料訂購等資料均儲存於您的裝置本機或您的 iCloud 帳號中。我們不會在我們的伺服器上儲存您的個人資料。</p>
+    <h3>2. 我們收集的資料</h3>
+    <ul>
+        <li><strong style="color:var(--text)">本機儲存資料：</strong>工程記錄、案場資訊、工程進度、材料訂購等，儲存於您的裝置或 iCloud Drive。</li>
+        <li><strong style="color:var(--text)">訂閱資料：</strong>訂閱狀態由 Apple App Store 及 RevenueCat 管理，我們不會存取您的付款資訊。</li>
+        <li><strong style="color:var(--text)">匯出資料：</strong>您主動匯出的 PDF、Excel 或 LINE 分享內容，由您自行控制。</li>
+    </ul>
+    <h3>3. 第三方服務</h3>
+    <ul>
+        <li><strong style="color:var(--text)">Apple iCloud：</strong>用於雲端備份與資料同步。</li>
+        <li><strong style="color:var(--text)">RevenueCat：</strong>用於管理訂閱狀態，適用 <a href="https://www.revenuecat.com/privacy" target="_blank">RevenueCat 隱私權政策</a>。</li>
+        <li><strong style="color:var(--text)">Apple App Store：</strong>用於處理應用程式內購。</li>
+    </ul>
+    <h3>4. 資料安全</h3>
+    <p>您的資料儲存於您的裝置本機或 iCloud，受 Apple 的安全機制保護。我們不會存取、傳輸或出售您的個人資料。</p>
+    <h3>5. 兒童隱私</h3>
+    <p>本應用程式不針對 13 歲以下兒童設計，亦不會主動收集兒童個人資料。</p>
+    <h3>6. 隱私權政策變更</h3>
+    <p>我們保留修改本隱私權政策的權利。重大變更時，將於應用程式內通知使用者。</p>
+    <h3>7. 聯絡我們</h3>
+    <div class="contact-box">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+            <div class="name" style="margin-bottom:0;">CHANG YOU WEI</div>
+            <a href="https://www.threads.com/@waamao" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;padding:8px 18px;border-radius:980px;background:var(--text);color:#000;font-size:13.5px;font-weight:600;text-decoration:none;flex-shrink:0;">
+                <svg width="15" height="15" viewBox="0 0 192 192" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M141.537 88.9883C140.71 88.5919 139.87 88.2104 139.019 87.8451C137.537 60.5382 122.616 44.905 97.5619 44.745C97.4484 44.7443 97.3355 44.7443 97.222 44.7443C82.2364 44.7443 69.7731 51.1409 62.102 62.7807L75.881 72.2328C81.6116 63.5383 90.6052 61.6848 97.2286 61.6848C97.3051 61.6848 97.3819 61.6848 97.4576 61.6855C105.707 61.7381 111.932 64.1366 115.961 68.814C118.893 72.2193 120.854 76.9082 121.825 82.8038C114.511 81.5589 106.601 81.1794 98.145 81.6626C74.3247 83.0231 59.0111 96.9187 60.0396 116.505C60.5615 126.44 65.4397 134.998 73.775 140.409C80.8224 144.987 89.8896 147.243 99.3103 146.735C111.844 146.049 121.849 141.315 129.043 132.664C134.474 126.126 137.912 117.652 139.462 106.83C145.851 110.723 150.577 115.85 153.164 122.036C157.575 132.594 157.83 149.87 143.7 163.985C131.316 176.351 116.484 181.679 96.9598 181.833C75.3018 181.66 58.9124 174.858 47.2519 161.575C36.3396 149.146 30.7022 130.965 30.4966 106.499C30.7022 82.0328 36.3396 63.8531 47.2519 51.4249C58.9124 38.1421 75.3018 31.3399 96.9598 31.1665C118.775 31.3414 135.428 38.1774 146.68 51.4949C152.19 58.0021 156.334 66.4212 158.827 76.1938L176.9 71.6338C173.856 60.0056 168.741 49.9384 161.65 41.5541C147.096 24.331 125.845 15.5091 97.0298 15.2891C68.3897 15.5074 47.5138 24.4149 33.6197 40.9721C21.3079 55.5893 14.9424 75.5636 14.7194 100.6L14.7231 106.499L14.7194 112.398C14.9424 137.436 21.3079 157.41 33.6197 172.027C47.5138 188.585 68.3897 197.492 97.0298 197.71C121.03 197.522 138.716 191.11 154.098 176.878C173.995 158.505 173.376 135.499 166.928 121.361C162.351 111.32 153.729 103.15 141.537 88.9883ZM99.9967 130.169C89.4907 130.783 78.5817 126.045 78.0397 116.055C77.6404 108.72 83.2411 100.535 99.0121 99.5943C100.836 99.4853 102.628 99.4325 104.389 99.4325C110.379 99.4325 115.988 100.038 121.077 101.194C119.276 123.746 108.612 129.647 99.9967 130.169Z"/></svg>
+                在脆上追蹤
+            </a>
+        </div>
+        <div class="email"><a href="mailto:waamao@icloud.com">waamao@icloud.com</a></div>
+    </div>
+</div>
+
+<footer>
+    <span>© 2026 CHANG YOU WEI</span>
+</footer>
+</body>
+</html>
