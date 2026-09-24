@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="t d">
+  <title id="t">完成 Google 權限授權</title><desc id="d">Google 權限要求畫面，允許按鈕被標示。</desc>
+  <defs><filter id="s"><feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#142030" flood-opacity=".24"/></filter><marker id="a" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0l12 6-12 6z" fill="#e57ca0"/></marker></defs>
+  <rect width="1200" height="675" rx="42" fill="#edf2f8"/>
+  <rect x="238" y="46" width="724" height="583" rx="24" fill="#fff" filter="url(#s)"/>
+  <circle cx="600" cy="108" r="30" fill="#4285f4"/><text x="600" y="118" text-anchor="middle" font-family="Arial" font-size="30" font-weight="800" fill="#fff">G</text>
+  <text x="600" y="164" text-anchor="middle" font-family="-apple-system,PingFang TC,sans-serif" font-size="26" font-weight="800" fill="#202124">GCGL 同步要求存取權限</text>
+  <text x="600" y="202" text-anchor="middle" font-family="-apple-system,PingFang TC,sans-serif" font-size="17" fill="#5f6368">選擇自己的 Google 帳號後，確認以下權限</text>
+  <rect x="300" y="236" width="600" height="88" rx="14" fill="#f8f9fa"/><circle cx="340" cy="280" r="18" fill="#0f9d58"/><path d="M331 280l7 7 12-15" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><text x="376" y="274" font-family="-apple-system,PingFang TC,sans-serif" font-size="18" font-weight="700" fill="#202124">查看及管理你的 Google 試算表</text><text x="376" y="302" font-family="-apple-system,PingFang TC,sans-serif" font-size="15" fill="#5f6368">僅用於寫入你自己建立的專案報告</text>
+  <rect x="300" y="340" width="600" height="88" rx="14" fill="#f8f9fa"/><circle cx="340" cy="384" r="18" fill="#0f9d58"/><path d="M331 384l7 7 12-15" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><text x="376" y="378" font-family="-apple-system,PingFang TC,sans-serif" font-size="18" font-weight="700" fill="#202124">執行 Apps Script 網頁應用程式</text><text x="376" y="406" font-family="-apple-system,PingFang TC,sans-serif" font-size="15" fill="#5f6368">讓 App 可以呼叫同步服務</text>
+  <rect x="642" y="510" width="124" height="46" rx="10" fill="#fff" stroke="#dadce0"/><text x="704" y="539" text-anchor="middle" font-family="-apple-system,PingFang TC,sans-serif" font-size="17" fill="#1a73e8">取消</text>
+  <rect x="780" y="510" width="124" height="46" rx="10" fill="#1a73e8"/><text x="842" y="539" text-anchor="middle" font-family="-apple-system,PingFang TC,sans-serif" font-size="17" font-weight="800" fill="#fff">允許</text>
+  <circle cx="1030" cy="533" r="35" fill="#e57ca0"/><text x="1030" y="545" text-anchor="middle" font-family="Arial" font-size="30" font-weight="800" fill="#fff">5</text><path d="M989 533H911" stroke="#e57ca0" stroke-width="8" stroke-linecap="round" marker-end="url(#a)"/>
+  <rect x="902" y="580" width="250" height="54" rx="16" fill="#1c1c1e"/><text x="1027" y="614" text-anchor="middle" font-family="-apple-system,PingFang TC,sans-serif" font-size="19" font-weight="800" fill="#fff">確認後按「允許」</text>
+</svg>

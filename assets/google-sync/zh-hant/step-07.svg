@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="t d">
+  <title id="t">部署為網頁應用程式</title><desc id="d">Apps Script 的新增部署作業視窗，網頁應用程式、執行身分與存取權限均已標示。</desc>
+  <defs><filter id="s"><feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#142030" flood-opacity=".24"/></filter><marker id="a" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0l12 6-12 6z" fill="#e57ca0"/></marker></defs>
+  <rect width="1200" height="675" rx="42" fill="#edf2f8"/>
+  <rect x="48" y="38" width="1104" height="598" rx="24" fill="#f8f9fa" filter="url(#s)"/>
+  <rect x="48" y="38" width="1104" height="72" rx="24" fill="#fff"/><text x="84" y="84" font-family="-apple-system,PingFang TC,sans-serif" font-size="24" font-weight="800" fill="#202124">Apps Script</text><rect x="956" y="52" width="156" height="44" rx="9" fill="#1a73e8"/><text x="1034" y="81" text-anchor="middle" font-family="-apple-system,PingFang TC,sans-serif" font-size="17" font-weight="800" fill="#fff">部署</text>
+  <rect x="250" y="126" width="700" height="470" rx="22" fill="#fff" filter="url(#s)"/>
+  <text x="292" y="172" font-family="-apple-system,PingFang TC,sans-serif" font-size="25" font-weight="800" fill="#202124">新增部署作業</text>
+  <text x="292" y="218" font-family="-apple-system,PingFang TC,sans-serif" font-size="15" font-weight="700" fill="#5f6368">選取類型</text><rect x="292" y="232" width="616" height="50" rx="9" fill="#fff" stroke="#dadce0"/><text x="314" y="264" font-family="-apple-system,PingFang TC,sans-serif" font-size="17" fill="#202124">網頁應用程式</text>
+  <text x="292" y="326" font-family="-apple-system,PingFang TC,sans-serif" font-size="15" font-weight="700" fill="#5f6368">執行身分</text><rect x="292" y="340" width="616" height="50" rx="9" fill="#fff" stroke="#dadce0"/><text x="314" y="372" font-family="-apple-system,PingFang TC,sans-serif" font-size="17" fill="#202124">我（你的 Google 帳號）</text>
+  <text x="292" y="434" font-family="-apple-system,PingFang TC,sans-serif" font-size="15" font-weight="700" fill="#5f6368">誰可以存取</text><rect x="292" y="448" width="616" height="50" rx="9" fill="#e8f0fe" stroke="#1a73e8" stroke-width="2"/><text x="314" y="480" font-family="-apple-system,PingFang TC,sans-serif" font-size="17" font-weight="800" fill="#174ea6">所有人</text>
+  <rect x="770" y="526" width="138" height="46" rx="9" fill="#1a73e8"/><text x="839" y="556" text-anchor="middle" font-family="-apple-system,PingFang TC,sans-serif" font-size="17" font-weight="800" fill="#fff">部署</text>
+  <circle cx="1033" cy="470" r="35" fill="#e57ca0"/><text x="1033" y="482" text-anchor="middle" font-family="Arial" font-size="30" font-weight="800" fill="#fff">7</text><path d="M992 470H914" stroke="#e57ca0" stroke-width="8" stroke-linecap="round" marker-end="url(#a)"/>
+  <rect x="950" y="528" width="204" height="56" rx="16" fill="#1c1c1e"/><text x="1052" y="563" text-anchor="middle" font-family="-apple-system,PingFang TC,sans-serif" font-size="19" font-weight="800" fill="#fff">一定要選「所有人」</text>
+</svg>
