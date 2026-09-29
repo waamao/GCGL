@@ -832,7 +832,13 @@ function renderReportSheets_(spreadsheet, tables, changedKeys) {
     return reportKeys.indexOf(table.key) !== -1;
   }).forEach(function(table) {
     if (table.key === "site_overview") {
-      renderSiteOverviewReport_(spreadsheet, table, valuesByKey, siteNames);
+      renderSiteOverviewReport_(
+        spreadsheet,
+        table,
+        valuesByKey,
+        recordIdsByKey,
+        siteNames
+      );
     } else if (table.key === "monthly_progress") {
       renderMonthlyProgressReport_(spreadsheet, table, valuesByKey[table.key], siteNames);
     } else if (table.key === "attendance") {
@@ -944,13 +950,18 @@ function prepareReportSheet_(spreadsheet, sheetName) {
   return sheet;
 }
 
-function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, siteNames) {
+function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByKey, siteNames) {
   const sheet = prepareReportSheet_(spreadsheet, table.sheetName);
   const siteIndex = reportSiteColumnIndex_(table.key);
   const headers = withoutArrayIndex_(table.headers, siteIndex);
   const widths = withoutArrayIndex_(table.widths || [], siteIndex);
   const formats = withoutArrayIndex_(table.formats || [], siteIndex);
   const summaryColumn = headers.length + 2;
+  const companyMemoText = buildTodayCompanyMemoSummary_(
+    spreadsheet,
+    valuesByKey.memos || [],
+    recordIdsByKey.memos || []
+  );
   let startRow = 3;
 
   ensureSheetSize_(sheet, Math.max(siteNames.length * 6, 10), summaryColumn);
@@ -967,6 +978,33 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, siteNames) {
     .setVerticalAlignment("middle");
   sheet.setRowHeight(1, 36);
   sheet.setFrozenRows(1);
+
+  if (companyMemoText) {
+    const companyMemoRange = sheet.getRange(2, 1, 1, summaryColumn).merge();
+    companyMemoRange
+      .setValue("你的公司備忘錄\n" + companyMemoText)
+      .setBackground("#FFF7F7")
+      .setFontColor(GCGL_REPORT_COLORS.text)
+      .setFontFamily("Arial")
+      .setFontSize(11)
+      .setFontWeight("normal")
+      .setWrap(true)
+      .setHorizontalAlignment("left")
+      .setVerticalAlignment("top")
+      .setBorder(
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        GCGL_REPORT_COLORS.red,
+        SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+      );
+    const lineCount = companyMemoRange.getValue().split("\n").length;
+    sheet.setRowHeight(2, Math.max(48, Math.min(180, lineCount * 18)));
+    startRow = 4;
+  }
 
   siteNames.forEach(function(siteName) {
     const siteRows = (valuesByKey.site_overview || [])
@@ -1024,6 +1062,19 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, siteNames) {
     sheet.setRowHeight(recordBottomRow, Math.max(54, Math.min(180, recordRange.getValue().split("\n").length * 17)));
     startRow = recordBottomRow + 3;
   });
+}
+
+function buildTodayCompanyMemoSummary_(spreadsheet, memoRows, memoRecordIds) {
+  const timezone = spreadsheet.getSpreadsheetTimeZone() || Session.getScriptTimeZone();
+  const todayKey = Utilities.formatDate(new Date(), timezone, "yyyy-MM-dd");
+  const contents = [];
+  memoRows.forEach(function(row, index) {
+    const recordId = optionalString_(memoRecordIds[index]);
+    if (recordId.indexOf("memo-company:") !== 0) return;
+    if (reportDateKeys_(row[0], timezone).indexOf(todayKey) === -1) return;
+    contents.push(optionalString_(row[3]) || "（無內容）");
+  });
+  return contents.join("\n");
 }
 
 function buildTodaySiteSummary_(spreadsheet, siteName, valuesByKey) {
