@@ -862,8 +862,14 @@ function renderReportSheets_(spreadsheet, tables, changedKeys) {
       recordIdsByKey.material_catalog || []
     );
   }
+  const materialSummaryTable = materialCatalogTable ? tables.find(function(table) {
+    return table.key === "material_summary";
+  }) : null;
   tables.filter(function(table) {
     return table.key !== "material_catalog" && reportKeys.indexOf(table.key) !== -1;
+  }).sort(function(left, right) {
+    // 總覽的材料成本引用材料統計小計；先建立來源報表，避免首次同步產生 #REF!。
+    return Number(left.key === "site_overview") - Number(right.key === "site_overview");
   }).forEach(function(table) {
     if (table.key === "site_overview") {
       renderSiteOverviewReport_(
@@ -871,7 +877,8 @@ function renderReportSheets_(spreadsheet, tables, changedKeys) {
         table,
         valuesByKey,
         recordIdsByKey,
-        siteNames
+        siteNames,
+        materialSummaryTable
       );
     } else if (table.key === "monthly_progress") {
       renderMonthlyProgressReport_(spreadsheet, table, valuesByKey[table.key], siteNames);
@@ -902,14 +909,14 @@ function renderReportSheets_(spreadsheet, tables, changedKeys) {
 /**
  * 一般變更只重建受影響的可見分頁。當某頁第一次出現該案場資料時，該資料表
  * 本身也會被列為已變更，因此案場下拉選單會一起更新。總覽另外依賴工程記錄、
- * 備忘錄及材料訂購。
+ * 備忘錄、材料訂購及材料統計。
  */
 function reportKeysForChangedTables_(changedKeys) {
   const keys = Array.isArray(changedKeys) && changedKeys.length > 0
     ? uniqueStrings_(changedKeys)
     : GCGL_CONFIG.expectedTableKeys.slice();
   const result = keys.slice();
-  if (["work_logs", "memos", "material_orders"].some(function(key) {
+  if (["work_logs", "memos", "material_orders", "material_summary", "material_catalog"].some(function(key) {
     return keys.indexOf(key) !== -1;
   })) {
     result.push("site_overview");
@@ -995,12 +1002,12 @@ function prepareReportSheet_(spreadsheet, sheetName) {
   return sheet;
 }
 
-function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByKey, siteNames) {
+function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByKey, siteNames, materialSummaryTable) {
   const sheet = prepareReportSheet_(spreadsheet, table.sheetName);
   const siteIndex = reportSiteColumnIndex_(table.key);
-  const headers = withoutArrayIndex_(table.headers, siteIndex);
-  const widths = withoutArrayIndex_(table.widths || [], siteIndex);
-  const formats = withoutArrayIndex_(table.formats || [], siteIndex);
+  const headers = ["承攬總價", "追加總價", "契約總額", "已計價", "計價進度", "施工進度", "總出工數"];
+  const widths = [120, 120, 120, 120, 120, 120, 120];
+  const formats = ["#,##0", "#,##0", "#,##0", "#,##0", "0%", "0%", "#,##0.########"];
   const summaryColumn = headers.length + 2;
   const companyMemoText = buildPendingCompanyMemoSummary_(
     valuesByKey.memos || [],
@@ -1051,13 +1058,26 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
   sheet.getRange(2, 1).setFontWeight("bold");
 
   siteNames.forEach(function(siteName) {
-    const siteRows = (valuesByKey.site_overview || [])
-      .filter(function(row) { return sameReportText_(row[siteIndex], siteName); })
-      .map(function(row) { return withoutArrayIndex_(row, siteIndex); });
-    const bodyRows = siteRows.length > 0 ? siteRows : [headers.map(function() { return ""; })];
+    const overviewRow = (valuesByKey.site_overview || []).find(function(row) {
+      return sameReportText_(row[siteIndex], siteName);
+    }) || [];
+    const vendorTotals = buildSiteVendorWorkTotals_(siteName, valuesByKey.work_logs || []);
+    const totalWork = vendorTotals.reduce(function(total, vendor) { return total + vendor.people; }, 0);
+    const materialRows = valuesByKey.material_summary || [];
+    const hasMaterials = materialRows.some(function(row) { return sameReportText_(row[0], siteName); });
+    const costReportExists = materialSummaryTable && spreadsheet.getSheetByName(materialSummaryTable.sheetName);
+    const bodyRows = [[
+      overviewRow[1] === undefined ? "" : overviewRow[1],
+      overviewRow[2] === undefined ? "" : overviewRow[2],
+      overviewRow[3] === undefined ? "" : overviewRow[3],
+      overviewRow[4] === undefined ? "" : overviewRow[4],
+      overviewRow[5] === undefined ? "" : overviewRow[5],
+      overviewRow[6] === undefined ? "" : overviewRow[6],
+      totalWork
+    ]];
     const tableEndColumn = headers.length;
 
-    ensureSheetSize_(sheet, startRow + bodyRows.length + 3, summaryColumn);
+    ensureSheetSize_(sheet, startRow + bodyRows.length + vendorTotals.length + 4, summaryColumn);
     sheet.getRange(startRow, 1, 1, tableEndColumn).merge()
       .setValue(siteName)
       .setBackground(GCGL_REPORT_COLORS.titleFill)
@@ -1084,7 +1104,51 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
       widths,
       formats
     );
-    const recordBottomRow = Math.max(tableBlock.endRow, startRow + 3);
+    const costRow = tableBlock.endRow + 1;
+    sheet.getRange(costRow, 1, 1, tableEndColumn)
+      .setBackground(GCGL_REPORT_COLORS.secondRow)
+      .setFontColor(GCGL_REPORT_COLORS.text)
+      .setFontFamily("Arial")
+      .setFontSize(10)
+      .setFontWeight("normal")
+      .setVerticalAlignment("middle");
+    sheet.getRange(costRow, 1).setValue("材料成本").setFontWeight("bold");
+    const costCell = sheet.getRange(costRow, 2)
+      .setNumberFormat("#,##0.##")
+      .setHorizontalAlignment("right");
+    const missingPriceCell = sheet.getRange(costRow, 3, 1, tableEndColumn - 2).merge()
+      .setWrap(true)
+      .setHorizontalAlignment("left");
+    if (hasMaterials && costReportExists) {
+      const costFormulas = siteMaterialCostFormulas_(siteName, materialSummaryTable, materialRows.length);
+      costCell.setFormula(costFormulas.total);
+      missingPriceCell.setFormula('="有"&(' + costFormulas.missingCount.slice(1) + ')&"項品項未填入單價"');
+    } else {
+      // 舊版資料尚無單價報表時，已知成本為 0，並明確列出仍需設定單價的品項數。
+      const unpricedItemCount = materialRows.filter(function(row) {
+        return sameReportText_(row[0], siteName) && Number(row[3]) !== 0;
+      }).length;
+      costCell.setValue(0);
+      missingPriceCell.setValue("有" + unpricedItemCount + "項品項未填入單價" +
+        (hasMaterials ? "（尚未建立單價報表）" : ""));
+    }
+    sheet.setRowHeight(costRow, 28);
+    vendorTotals.forEach(function(vendor, index) {
+      const vendorRow = costRow + index + 1;
+      sheet.getRange(vendorRow, 1, 1, tableEndColumn).merge()
+        .setValue(vendor.name + " 累積" + formatReportWorkCount_(vendor.people) + "工")
+        .setBackground(index % 2 === 0 ? GCGL_REPORT_COLORS.firstRow : GCGL_REPORT_COLORS.secondRow)
+        .setFontColor(GCGL_REPORT_COLORS.text)
+        .setFontFamily("Arial")
+        .setFontSize(10)
+        .setWrap(true)
+        .setHorizontalAlignment("left")
+        .setVerticalAlignment("middle");
+      sheet.setRowHeight(vendorRow, 26);
+    });
+    // 今日記錄需要較高空間時，只增加列表下方的空白列，不拉高最後一家廠商。
+    const recordBottomRow = costRow + vendorTotals.length + 1;
+    const recordText = buildTodaySiteSummary_(spreadsheet, siteName, valuesByKey);
     const recordRange = sheet.getRange(
       startRow + 1,
       summaryColumn,
@@ -1092,7 +1156,7 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
       1
     );
     recordRange.merge()
-      .setValue(buildTodaySiteSummary_(spreadsheet, siteName, valuesByKey))
+      .setValue(recordText)
       .setBackground(GCGL_REPORT_COLORS.firstRow)
       .setFontColor(GCGL_REPORT_COLORS.text)
       .setFontFamily("Arial")
@@ -1103,9 +1167,46 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
       .setBorder(true, true, true, true, false, false, GCGL_REPORT_COLORS.border, SpreadsheetApp.BorderStyle.SOLID);
     sheet.setRowHeight(startRow, 30);
     sheet.setRowHeight(startRow + 1, 28);
-    sheet.setRowHeight(recordBottomRow, Math.max(54, Math.min(180, recordRange.getValue().split("\n").length * 17)));
+    sheet.setRowHeight(startRow + 2, 28);
+    const summaryHeight = Math.max(54, Math.min(180, recordText.split("\n").length * 17));
+    sheet.setRowHeight(recordBottomRow, Math.max(24, summaryHeight - 84 - vendorTotals.length * 26));
     startRow = recordBottomRow + 3;
   });
+}
+
+/** 工程記錄已在 App 以 displayGroupID 去除逐樓層重複；此處只加總每筆原始顯示人數。 */
+function buildSiteVendorWorkTotals_(siteName, workRows) {
+  const totals = new Map();
+  workRows.forEach(function(row) {
+    if (!sameReportText_(row[1], siteName)) return;
+    const vendorName = optionalString_(row[4]) || "未指定廠商";
+    const people = Number(row[6]);
+    totals.set(vendorName, (totals.get(vendorName) || 0) + (Number.isFinite(people) ? people : 0));
+  });
+  return Array.from(totals, function(entry) { return { name: entry[0], people: entry[1] }; })
+    .sort(function(left, right) { return left.name.localeCompare(right.name, "zh-Hant", { numeric: true }); });
+}
+
+function formatReportWorkCount_(value) {
+  return String(Math.round(value * 1e8) / 1e8);
+}
+
+/** 使用公式連到材料統計，先加總已填單價的成本，另外計算未填單價的品項數。 */
+function siteMaterialCostFormulas_(siteName, table, sourceRowCount) {
+  const reference = quoteSheetNameForFormula_(table.sheetName);
+  const lastRow = Math.max(sourceRowCount + 3, 4);
+  const siteRange = reference + "!$A$4:$A$" + lastRow;
+  const quantityRange = reference + "!$D$4:$D$" + lastRow;
+  const priceColumn = reportColumnLetter_(table.headers.length + 1);
+  const subtotalColumn = reportColumnLetter_(table.headers.length + 2);
+  const priceRange = reference + "!$" + priceColumn + "$4:$" + priceColumn + "$" + lastRow;
+  const subtotalRange = reference + "!$" + subtotalColumn + "$4:$" + subtotalColumn + "$" + lastRow;
+  // SUMIFS/COUNTIFS 的文字條件會解讀 *、? 與 ~；先逸出，避免案場名稱被當成萬用字元。
+  const criterion = '"' + String(siteName).replace(/~/g, "~~").replace(/\*/g, "~*").replace(/\?/g, "~?").replace(/"/g, '""') + '"';
+  return {
+    total: "=SUMIFS(" + subtotalRange + "," + siteRange + "," + criterion + ")",
+    missingCount: "=COUNTIFS(" + siteRange + "," + criterion + "," + quantityRange + ',"<>0",' + priceRange + ',"")'
+  };
 }
 
 function buildPendingCompanyMemoSummary_(memoRows, memoRecordIds) {
