@@ -1133,9 +1133,10 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
     const metricRows = metricLabels.map(function(label, index) {
       return [label, index === 6 ? totalWork : (overviewRow[index + 1] === undefined ? "" : overviewRow[index + 1])];
     });
-    const resourceRows = [["材料成本", 0], ["未填單價品項", 0]].concat(
-      vendorTotals.map(function(vendor) { return [vendor.name + " 累計出工數", vendor.people]; })
-    );
+    metricRows.push(["材料成本", 0], ["未填單價品項", 0]);
+    const resourceRows = vendorTotals.map(function(vendor) {
+      return [vendor.name + " 累計出工數", vendor.people];
+    });
     // E 欄圖表高 250px；F 欄今日記錄按內容延長，不裁切機具、備註與未完成項目。
     const blockRows = Math.max(10, metricRows.length, resourceRows.length,
       Math.ceil(renderedLineCount * 17 / 28) + 1);
@@ -1180,18 +1181,20 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
     sheet.getRange(startRow + 5, 2, 2, 1).setNumberFormat("0%");
     sheet.getRange(startRow + 7, 2).setNumberFormat("#,##0.########");
 
-    sheet.getRange(startRow + 1, 3, resourceRows.length, 2)
-      .setValues(resourceRows)
-      .setFontColor(GCGL_REPORT_COLORS.text)
-      .setFontFamily("Arial")
-      .setFontSize(10)
-      .setVerticalAlignment("middle")
-      .setBorder(true, true, true, true, true, true, GCGL_REPORT_COLORS.border, SpreadsheetApp.BorderStyle.SOLID);
-    sheet.getRange(startRow + 1, 3, resourceRows.length, 1).setFontWeight("bold").setWrap(true);
-    sheet.getRange(startRow + 1, 4, resourceRows.length, 1)
-      .setHorizontalAlignment("right").setNumberFormat("#,##0.########");
-    const costCell = sheet.getRange(startRow + 1, 4).setNumberFormat("#,##0.##");
-    const missingPriceCell = sheet.getRange(startRow + 2, 4).setNumberFormat("#,##0");
+    if (resourceRows.length > 0) {
+      sheet.getRange(startRow + 1, 3, resourceRows.length, 2)
+        .setValues(resourceRows)
+        .setFontColor(GCGL_REPORT_COLORS.text)
+        .setFontFamily("Arial")
+        .setFontSize(10)
+        .setVerticalAlignment("middle")
+        .setBorder(true, true, true, true, true, true, GCGL_REPORT_COLORS.border, SpreadsheetApp.BorderStyle.SOLID);
+      sheet.getRange(startRow + 1, 3, resourceRows.length, 1).setFontWeight("bold").setWrap(true);
+      sheet.getRange(startRow + 1, 4, resourceRows.length, 1)
+        .setHorizontalAlignment("right").setNumberFormat("#,##0.########");
+    }
+    const costCell = sheet.getRange(startRow + 8, 2).setNumberFormat("#,##0.##");
+    const missingPriceCell = sheet.getRange(startRow + 9, 2).setNumberFormat("#,##0");
     if (hasMaterials && costReportExists) {
       const costFormulas = siteMaterialCostFormulas_(siteName, materialSummaryTable, materialRows.length);
       costCell.setFormula(costFormulas.total);
@@ -1201,7 +1204,7 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
       const unpricedItemCount = materialRows.filter(function(row) {
         return sameReportText_(row[0], siteName) && Number(row[3]) !== 0;
       }).length;
-      if (hasMaterials) sheet.getRange(startRow + 1, 3).setValue("材料成本（尚未建立單價表）");
+      if (hasMaterials) sheet.getRange(startRow + 8, 1).setNote("尚未建立單價表");
       costCell.setValue(0);
       missingPriceCell.setValue(unpricedItemCount);
     }
