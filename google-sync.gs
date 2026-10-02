@@ -97,7 +97,7 @@ function onOpen() {
 function onEdit(event) {
   if (!event || !event.range) return;
   const range = event.range;
-  if (range.getRow() !== 1 || range.getColumn() !== 2) return;
+  if (range.getRow() !== 1 || range.getColumn() !== 1) return;
 
   const sheet = range.getSheet();
   const tables = loadTableSchemas_();
@@ -108,8 +108,7 @@ function onEdit(event) {
 
   const selectedSite = optionalString_(range.getValue()) || GCGL_CONFIG.allSitesLabel;
   PropertiesService.getScriptProperties().setProperty(
-    reportSelectionPropertyKey_(table.key),
-    selectedSite
+    reportSelectionPropertyKey_(table.key), selectedSite
   );
   applyReportSiteFilter_(sheet, table, selectedSite);
 }
@@ -1039,6 +1038,7 @@ function prepareReportSheet_(spreadsheet, sheetName) {
     .forEach(function(range) { range.breakApart(); });
   sheet.showColumns(1, sheet.getMaxColumns());
   sheet.clear();
+  sheet.getRange(1, 2).clearDataValidations().clearNote();
   sheet.clearConditionalFormatRules();
   sheet.setHiddenGridlines(true);
   sheet.setFrozenRows(0);
@@ -1656,7 +1656,6 @@ function renderMaterialCostReport_(spreadsheet, table, values, siteNames, priceS
     ? values.map(function(row) { return row.concat(["", ""]); })
     : [headers.map(function() { return ""; })];
   const selectedSite = selectedSiteForReport_(table.key, siteNames);
-  renderReportSiteSelector_(sheet, selectedSite, siteNames);
   const tableBlock = writeReportTableBlock_(
     sheet,
     3,
@@ -1699,6 +1698,7 @@ function renderMaterialCostReport_(spreadsheet, table, values, siteNames, priceS
   }
 
   createReportFilter_(sheet, 3, 1, tableBlock);
+  renderReportSelectors_(sheet, selectedSite, siteNames);
   applyReportSiteFilter_(sheet, table, selectedSite);
   sheet.setFrozenRows(3);
 }
@@ -1738,7 +1738,6 @@ function renderFlatReport_(spreadsheet, table, values, siteNames) {
     ? reportValues
     : [reportTable.headers.map(function() { return ""; })];
   const selectedSite = selectedSiteForReport_(table.key, siteNames);
-  renderReportSiteSelector_(sheet, selectedSite, siteNames);
   const tableBlock = writeReportTableBlock_(
     sheet,
     3,
@@ -1749,6 +1748,7 @@ function renderFlatReport_(spreadsheet, table, values, siteNames) {
     reportTable.formats || []
   );
   createReportFilter_(sheet, 3, 1, tableBlock);
+  renderReportSelectors_(sheet, selectedSite, siteNames);
   applyReportSiteFilter_(sheet, table, selectedSite);
   sheet.setFrozenRows(3);
 }
@@ -1780,21 +1780,15 @@ function selectedSiteForReport_(tableKey, siteNames) {
   return GCGL_CONFIG.allSitesLabel;
 }
 
-function renderReportSiteSelector_(sheet, selectedSite, siteNames) {
-  const options = [GCGL_CONFIG.allSitesLabel].concat(siteNames);
+function renderReportSelectors_(sheet, selectedSite, siteNames) {
   const validation = SpreadsheetApp.newDataValidation()
-    .requireValueInList(options, true)
+    .requireValueInList([GCGL_CONFIG.allSitesLabel].concat(siteNames), true)
     .setAllowInvalid(false)
     .build();
   sheet.getRange(1, 1)
-    .setValue("案場")
-    .setFontFamily("Arial")
-    .setFontSize(11)
-    .setFontWeight("bold")
-    .setVerticalAlignment("middle");
-  sheet.getRange(1, 2)
     .setValue(selectedSite)
     .setDataValidation(validation)
+    .clearNote()
     .setBackground(GCGL_REPORT_COLORS.titleFill)
     .setFontColor(GCGL_REPORT_COLORS.text)
     .setFontFamily("Arial")
@@ -1802,8 +1796,7 @@ function renderReportSiteSelector_(sheet, selectedSite, siteNames) {
     .setFontWeight("bold")
     .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
-  sheet.setColumnWidth(1, Math.max(sheet.getColumnWidth(1), 90));
-  sheet.setColumnWidth(2, Math.max(sheet.getColumnWidth(2), 180));
+  sheet.setColumnWidth(1, Math.max(sheet.getColumnWidth(1), 180));
   sheet.setRowHeight(1, 30);
 }
 
