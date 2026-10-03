@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="t d">
+  <title id="t">建立空白 Google 試算表</title><desc id="d">Google 試算表首頁，空白試算表按鈕以桃紅色箭頭標示。</desc>
+  <defs><filter id="s"><feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#142030" flood-opacity=".22"/></filter><marker id="a" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0l12 6-12 6z" fill="#e57ca0"/></marker></defs>
+  <rect width="1200" height="675" rx="42" fill="#edf2f8"/>
+  <rect x="52" y="40" width="1096" height="595" rx="24" fill="#fff" filter="url(#s)"/>
+  <rect x="52" y="40" width="1096" height="72" rx="24" fill="#fff"/>
+  <path d="M88 61h34v42H88z" fill="#0f9d58"/><path d="M97 70h16v24H97M97 78h16M105 70v24" stroke="#fff" stroke-width="2"/>
+  <text x="140" y="88" font-family="-apple-system,PingFang TC,sans-serif" font-size="25" font-weight="700" fill="#202124">Google 試算表</text>
+  <rect x="52" y="112" width="1096" height="210" fill="#f8f9fa"/>
+  <text x="105" y="158" font-family="-apple-system,PingFang TC,sans-serif" font-size="20" font-weight="700" fill="#3c4043">建立新試算表</text>
+  <rect x="105" y="184" width="156" height="110" rx="8" fill="#fff" stroke="#dadce0" stroke-width="2"/>
+  <path d="M145 216h76M145 236h76M145 256h76M165 202v72M194 202v72" stroke="#e2e6ea" stroke-width="3"/>
+  <circle cx="183" cy="239" r="28" fill="#fff" stroke="#0f9d58" stroke-width="4"/><path d="M183 224v30M168 239h30" stroke="#0f9d58" stroke-width="4" stroke-linecap="round"/>
+  <text x="183" y="318" text-anchor="middle" font-family="-apple-system,PingFang TC,sans-serif" font-size="18" font-weight="600" fill="#202124">空白</text>
+  <g fill="#e9edf2"><rect x="105" y="370" width="210" height="138" rx="10"/><rect x="342" y="370" width="210" height="138" rx="10"/><rect x="579" y="370" width="210" height="138" rx="10"/><rect x="816" y="370" width="210" height="138" rx="10"/></g>
+  <text x="105" y="352" font-family="-apple-system,PingFang TC,sans-serif" font-size="20" font-weight="700" fill="#3c4043">最近使用的試算表</text>
+  <circle cx="430" cy="232" r="35" fill="#e57ca0"/><text x="430" y="244" text-anchor="middle" font-family="Arial" font-size="30" font-weight="800" fill="#fff">1</text>
+  <path d="M389 232H269" stroke="#e57ca0" stroke-width="8" stroke-linecap="round" marker-end="url(#a)"/>
+  <rect x="372" y="276" width="235" height="56" rx="16" fill="#1c1c1e"/><text x="490" y="311" text-anchor="middle" font-family="-apple-system,PingFang TC,sans-serif" font-size="20" font-weight="700" fill="#fff">點一下「空白」</text>
+</svg>

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Paste the sync script and run setup</title>
+  <desc id="desc">Google Apps Script editor showing the setupGCGLSync function and the Run button.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#0b1220" flood-opacity=".22"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0l12 6-12 6z" fill="#e57ca0"/></marker>
+  </defs>
+  <rect width="1200" height="675" rx="42" fill="#edf1f7"/>
+  <g filter="url(#shadow)">
+    <rect x="54" y="42" width="1092" height="590" rx="22" fill="#fff"/>
+    <rect x="54" y="42" width="1092" height="60" rx="22" fill="#f8f9fa"/>
+    <circle cx="84" cy="72" r="7" fill="#ff5f57"/><circle cx="108" cy="72" r="7" fill="#ffbd2e"/><circle cx="132" cy="72" r="7" fill="#28c840"/>
+    <text x="174" y="80" font-family="Arial,sans-serif" font-size="23" font-weight="700" fill="#202124">Apps Script</text>
+    <rect x="54" y="102" width="215" height="530" fill="#f8f9fa"/>
+    <text x="82" y="148" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#3c4043">Files</text>
+    <rect x="70" y="168" width="180" height="44" rx="8" fill="#e8f0fe"/>
+    <text x="92" y="196" font-family="Arial,sans-serif" font-size="17" fill="#174ea6">Code.gs</text>
+    <rect x="269" y="102" width="877" height="64" fill="#fff" stroke="#e5e7eb"/>
+    <rect x="300" y="116" width="245" height="38" rx="7" fill="#fff" stroke="#dadce0"/>
+    <text x="318" y="141" font-family="Arial,sans-serif" font-size="16" fill="#3c4043">setupGCGLSync</text><path d="M517 130l7 8 7-8" fill="none" stroke="#5f6368" stroke-width="2"/>
+    <rect x="570" y="116" width="94" height="38" rx="7" fill="#1a73e8"/>
+    <text x="617" y="141" text-anchor="middle" font-family="Arial,sans-serif" font-size="16" font-weight="700" fill="#fff">Run</text>
+    <rect x="269" y="166" width="877" height="466" fill="#202124"/>
+    <g font-family="ui-monospace,Menlo,monospace" font-size="18">
+      <g fill="#9aa0a6"><text x="302" y="213">1</text><text x="302" y="249">2</text><text x="302" y="285">3</text><text x="302" y="321">4</text><text x="302" y="357">5</text><text x="302" y="393">6</text><text x="302" y="429">7</text></g>
+      <text x="344" y="213" fill="#c58af9">const</text><text x="410" y="213" fill="#8ab4f8">CONFIG</text><text x="487" y="213" fill="#e8eaed">= {</text>
+      <text x="378" y="249" fill="#9aa0a6">spreadsheetId:</text><text x="552" y="249" fill="#81c995">"auto"</text><text x="620" y="249" fill="#e8eaed">,</text>
+      <text x="344" y="285" fill="#e8eaed">};</text>
+      <text x="344" y="321" fill="#c58af9">function</text><text x="438" y="321" fill="#8ab4f8">setupGCGLSync</text><text x="590" y="321" fill="#e8eaed">() {</text>
+      <text x="378" y="357" fill="#8ab4f8">createProjectSheets</text><text x="576" y="357" fill="#e8eaed">();</text>
+      <text x="378" y="393" fill="#8ab4f8">saveSyncPassword</text><text x="566" y="393" fill="#e8eaed">();</text>
+      <text x="344" y="429" fill="#e8eaed">}</text>
+    </g>
+  </g>
+  <circle cx="795" cy="135" r="34" fill="#e57ca0"/><text x="795" y="145" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="800" fill="#fff">2</text>
+  <path d="M757 135H670" stroke="#e57ca0" stroke-width="8" stroke-linecap="round" marker-end="url(#arrow)"/>
+</svg>

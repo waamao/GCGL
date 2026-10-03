@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="t d">
+  <title id="t">從擴充功能開啟 Apps Script</title><desc id="d">Google 試算表的擴充功能選單已展開，Apps Script 選項被標示。</desc>
+  <defs><filter id="s"><feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#142030" flood-opacity=".22"/></filter><marker id="a" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0l12 6-12 6z" fill="#e57ca0"/></marker></defs>
+  <rect width="1200" height="675" rx="42" fill="#edf2f8"/>
+  <rect x="52" y="40" width="1096" height="595" rx="24" fill="#fff" filter="url(#s)"/>
+  <path d="M84 120h32v38H84z" fill="#0f9d58"/><text x="134" y="148" font-family="-apple-system,PingFang TC,sans-serif" font-size="23" font-weight="700" fill="#202124">GCGL 專案報告</text>
+  <g font-family="-apple-system,PingFang TC,sans-serif" font-size="17" fill="#3c4043"><text x="84" y="202">檔案</text><text x="143" y="202">編輯</text><text x="202" y="202">檢視</text><text x="261" y="202">插入</text><text x="320" y="202">格式</text><text x="379" y="202">資料</text><text x="438" y="202">工具</text><text x="497" y="202" font-weight="800">擴充功能</text><text x="594" y="202">說明</text></g>
+  <rect x="52" y="220" width="1096" height="415" fill="#fff"/>
+  <g stroke="#e5e7eb"><path d="M105 220v415M215 220v415M325 220v415M435 220v415M545 220v415M655 220v415M765 220v415M875 220v415M985 220v415M1095 220v415"/><path d="M52 264h1096M52 308h1096M52 352h1096M52 396h1096M52 440h1096M52 484h1096M52 528h1096M52 572h1096M52 616h1096"/></g>
+  <rect x="480" y="214" width="318" height="176" rx="12" fill="#fff" stroke="#dadce0" filter="url(#s)"/>
+  <rect x="494" y="270" width="290" height="52" rx="9" fill="#e8f0fe"/>
+  <g font-family="-apple-system,PingFang TC,sans-serif" font-size="18" fill="#202124"><text x="516" y="252">外掛程式</text><text x="516" y="303" font-weight="800" fill="#174ea6">Apps Script</text><text x="516" y="357">AppSheet</text></g>
+  <circle cx="904" cy="296" r="35" fill="#e57ca0"/><text x="904" y="308" text-anchor="middle" font-family="Arial" font-size="30" font-weight="800" fill="#fff">2</text><path d="M863 296H794" stroke="#e57ca0" stroke-width="8" stroke-linecap="round" marker-end="url(#a)"/>
+  <rect x="842" y="345" width="248" height="56" rx="16" fill="#1c1c1e"/><text x="966" y="380" text-anchor="middle" font-family="-apple-system,PingFang TC,sans-serif" font-size="20" font-weight="700" fill="#fff">點「Apps Script」</text>
+</svg>

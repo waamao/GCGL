@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Paste the web app URL in Site Log Manager</title>
+  <desc id="desc">An iPhone settings screen with Google Sheets Sync URL and password fields plus test and save actions.</desc>
+  <defs><filter id="shadow" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#000" flood-opacity=".35"/></filter><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#17171a"/><stop offset="1" stop-color="#080809"/></linearGradient><marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0l12 6-12 6z" fill="#e57ca0"/></marker></defs>
+  <rect width="1200" height="675" rx="42" fill="url(#bg)"/>
+  <g filter="url(#shadow)">
+    <rect x="410" y="30" width="380" height="615" rx="58" fill="#050506" stroke="#3a3a3c" stroke-width="3"/>
+    <rect x="425" y="45" width="350" height="585" rx="46" fill="#111113"/>
+    <rect x="540" y="57" width="120" height="28" rx="14" fill="#000"/>
+    <text x="459" y="124" font-family="Arial,sans-serif" font-size="28" fill="#7ec8e3">‹</text>
+    <text x="612" y="124" text-anchor="middle" font-family="Arial,sans-serif" font-size="19" font-weight="700" fill="#f5f5f7">Google Sheets Sync</text>
+    <text x="455" y="170" font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="#8e8e93">WEB APP URL</text>
+    <rect x="451" y="183" width="298" height="58" rx="13" fill="#1c1c1e"/>
+    <text x="467" y="217" font-family="Arial,sans-serif" font-size="14" fill="#f5f5f7">https://script.google.com/.../exec</text>
+    <text x="455" y="278" font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="#8e8e93">SYNC PASSWORD</text>
+    <rect x="451" y="291" width="298" height="58" rx="13" fill="#1c1c1e"/>
+    <text x="467" y="326" font-family="Arial,sans-serif" font-size="18" fill="#f5f5f7">••••••••••••</text>
+    <rect x="451" y="385" width="298" height="51" rx="14" fill="#2c2c2e"/><text x="600" y="417" text-anchor="middle" font-family="Arial,sans-serif" font-size="16" font-weight="700" fill="#7ec8e3">Test Connection</text>
+    <rect x="451" y="450" width="298" height="51" rx="14" fill="#e57ca0"/><text x="600" y="482" text-anchor="middle" font-family="Arial,sans-serif" font-size="16" font-weight="800" fill="#14090d">Save</text>
+    <circle cx="600" cy="538" r="9" fill="#67d394"/><text x="619" y="543" font-family="Arial,sans-serif" font-size="14" fill="#aeaeb2">Connection successful</text>
+    <rect x="550" y="606" width="100" height="5" rx="3" fill="#f5f5f7"/>
+  </g>
+  <circle cx="930" cy="421" r="38" fill="#e57ca0"/><text x="930" y="432" text-anchor="middle" font-family="Arial,sans-serif" font-size="30" font-weight="800" fill="#fff">4</text>
+  <path d="M886 421H755" stroke="#e57ca0" stroke-width="8" stroke-linecap="round" marker-end="url(#arrow)"/>
+</svg>
