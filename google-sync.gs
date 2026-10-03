@@ -31,7 +31,17 @@ const GCGL_CONFIG = Object.freeze({
   reportRebuildDelayMilliseconds: 5000,
   allSitesLabel: "全部案場",
   syncLogSheetName: "__GCGL_SYNC_LOG",
-  rawSheetPrefix: "__GCGL_DATA_",
+  rawDataSheetName: "__GCGL_DATA",
+  legacyRawSheetPrefix: "__GCGL_DATA_",
+  unifiedDataHeaders: [
+    "__table_key",
+    "__site_id",
+    "__record_id",
+    "__updated_at",
+    "__operation_id",
+    "__values_json"
+  ],
+  maxStoredPayloadChars: 45000,
   maxSyncLogRows: 500,
   maxRowsPerTable: 50000,
   maxVisibleColumns: 100,
@@ -140,6 +150,7 @@ function setupGCGLSync() {
   }
   properties.setProperties(setupProperties);
 
+  ensureUnifiedDataReady_(spreadsheet);
   ensureSyncLogSheet_(spreadsheet);
   hideInternalSheets_(spreadsheet);
   resetDeferredReportTriggers_();
@@ -219,6 +230,7 @@ function doPost(event) {
     lock.waitLock(30000);
 
     spreadsheet = configuredSpreadsheet_();
+    ensureUnifiedDataReady_(spreadsheet);
     if (wasOperationProcessed_(spreadsheet, payload.operationId)) {
       return jsonResponse_({
         ok: true,
@@ -287,20 +299,29 @@ function replaceSite_(spreadsheet, payload) {
   saveManagedTables_(tables);
   saveTableSchemas_(tables);
 
-  let totalRows = 0;
+  const targetKeys = {};
+  const incomingRows = [];
   tables.forEach(function(table) {
-    const incomingRows = table.rows.map(function(row) {
-      return buildStoredRow_(
-        siteId,
-        row,
-        table.headers.length,
-        payload.operationId,
-        payload.sentAt
-      );
+    targetKeys[table.key] = true;
+    table.rows.forEach(function(row) {
+      incomingRows.push(toUnifiedStorageRow_(
+        table.key,
+        buildStoredRow_(
+          siteId,
+          row,
+          table.headers.length,
+          payload.operationId,
+          payload.sentAt
+        )
+      ));
     });
-    totalRows += incomingRows.length;
-    rewriteTableReplacingSite_(spreadsheet, table, siteId, incomingRows);
   });
+
+  const existingRows = readUnifiedDataRows_(spreadsheet);
+  const retainedRows = existingRows.filter(function(row) {
+    return !(targetKeys[optionalString_(row[0])] && optionalString_(row[1]) === siteId);
+  });
+  writeUnifiedDataRows_(spreadsheet, retainedRows.concat(incomingRows));
 
   SpreadsheetApp.flush();
   recordSuccessfulDataSync_();
@@ -310,21 +331,21 @@ function replaceSite_(spreadsheet, payload) {
     siteId: siteId,
     siteName: optionalString_(site.name),
     tableCount: tables.length,
-    rowCount: totalRows
+    rowCount: incomingRows.length
   };
 }
 
-/** 從所有受管理工作表移除某案場。 */
+/** 從單一隱藏資料表移除某案場的所有資料。 */
 function deleteSite_(spreadsheet, payload) {
   const siteId = requiredString_(payload.siteId, "siteId");
   const tables = loadTableSchemas_();
-  let removedRows = 0;
-
-  tables.forEach(function(table) {
-    const sheet = spreadsheet.getSheetByName(rawSheetName_(table.key));
-    if (!sheet || sheet.getLastRow() < 2) return;
-    removedRows += removeSiteRowsFromExistingSheet_(sheet, siteId);
+  const existingRows = readUnifiedDataRows_(spreadsheet);
+  const retainedRows = existingRows.filter(function(row) {
+    return optionalString_(row[1]) !== siteId;
   });
+  const removedRows = existingRows.length - retainedRows.length;
+
+  if (removedRows > 0) writeUnifiedDataRows_(spreadsheet, retainedRows);
 
   SpreadsheetApp.flush();
   recordSuccessfulDataSync_();
@@ -333,34 +354,43 @@ function deleteSite_(spreadsheet, payload) {
   return { siteId: siteId, removedRows: removedRows };
 }
 
-/** 以 App 傳來的全部資料重新建立所有受管理工作表。 */
+/** 以 App 傳來的完整資料重建受管理資料；未提供的 optional table 會保留原資料。 */
 function fullSync_(spreadsheet, payload) {
   const tables = validateTables_(payload.tables, true);
   migrateManagedSheetNames_(spreadsheet, loadManagedTables_(), tables);
   saveManagedTables_(tables);
   saveTableSchemas_(tables);
 
-  let totalRows = 0;
+  const targetKeys = {};
+  const incomingRows = [];
   tables.forEach(function(table) {
-    const incomingRows = table.rows.map(function(row) {
+    targetKeys[table.key] = true;
+    table.rows.forEach(function(row) {
       const siteId = requiredString_(row.siteId, table.key + ".rows[].siteId");
-      return buildStoredRow_(
-        siteId,
-        row,
-        table.headers.length,
-        payload.operationId,
-        payload.sentAt
-      );
+      incomingRows.push(toUnifiedStorageRow_(
+        table.key,
+        buildStoredRow_(
+          siteId,
+          row,
+          table.headers.length,
+          payload.operationId,
+          payload.sentAt
+        )
+      ));
     });
-    totalRows += incomingRows.length;
-    rewriteWholeTable_(spreadsheet, table, incomingRows);
   });
+
+  // material_catalog 是 optional；若 App 這次未提供，沿用既有資料，與舊版行為一致。
+  const retainedRows = readUnifiedDataRows_(spreadsheet).filter(function(row) {
+    return !targetKeys[optionalString_(row[0])];
+  });
+  writeUnifiedDataRows_(spreadsheet, retainedRows.concat(incomingRows));
 
   SpreadsheetApp.flush();
   recordSuccessfulDataSync_();
   markReportsPending_(tables.map(function(table) { return table.key; }));
 
-  return { tableCount: tables.length, rowCount: totalRows };
+  return { tableCount: tables.length, rowCount: incomingRows.length };
 }
 
 /** 只重寫 App 判定有變更的資料表；刪除資料也由整張資料表快照反映。 */
@@ -374,29 +404,37 @@ function syncChanged_(spreadsheet, payload) {
   saveManagedTables_(tables);
   saveTableSchemas_(tables);
 
-  let totalRows = 0;
+  const targetKeys = {};
+  const incomingRows = [];
   tables.forEach(function(table) {
-    const incomingRows = table.rows.map(function(row) {
+    targetKeys[table.key] = true;
+    table.rows.forEach(function(row) {
       const siteId = requiredString_(row.siteId, table.key + ".rows[].siteId");
-      return buildStoredRow_(
-        siteId,
-        row,
-        table.headers.length,
-        payload.operationId,
-        payload.sentAt
-      );
+      incomingRows.push(toUnifiedStorageRow_(
+        table.key,
+        buildStoredRow_(
+          siteId,
+          row,
+          table.headers.length,
+          payload.operationId,
+          payload.sentAt
+        )
+      ));
     });
-    totalRows += incomingRows.length;
-    rewriteWholeTable_(spreadsheet, table, incomingRows);
   });
+
+  const retainedRows = readUnifiedDataRows_(spreadsheet).filter(function(row) {
+    return !targetKeys[optionalString_(row[0])];
+  });
+  writeUnifiedDataRows_(spreadsheet, retainedRows.concat(incomingRows));
 
   SpreadsheetApp.flush();
   recordSuccessfulDataSync_();
   markReportsPending_(tables.map(function(table) { return table.key; }));
-  return { tableCount: tables.length, rowCount: totalRows };
+  return { tableCount: tables.length, rowCount: incomingRows.length };
 }
 
-/** 依穩定 recordId 只新增、修改或刪除實際變動的資料列。 */
+/** 依穩定 recordId 在單一 __GCGL_DATA 逐筆新增、修改或刪除。 */
 function syncRows_(spreadsheet, payload) {
   const tables = validateRowDeltaTables_(payload.tables);
   if (tables.length === 0) {
@@ -407,21 +445,15 @@ function syncRows_(spreadsheet, payload) {
   saveManagedTables_(tables);
   saveTableSchemas_(tables);
 
-  let upsertedRowCount = 0;
-  let deletedRowCount = 0;
-  tables.forEach(function(table) {
-    const result = applyRowDelta_(spreadsheet, table, payload.operationId, payload.sentAt);
-    upsertedRowCount += result.upsertedRowCount;
-    deletedRowCount += result.deletedRowCount;
-  });
+  const result = applyUnifiedRowDeltas_(spreadsheet, tables, payload.operationId, payload.sentAt);
 
   SpreadsheetApp.flush();
   recordSuccessfulDataSync_();
   markReportsPending_(tables.map(function(table) { return table.key; }));
   return {
     tableCount: tables.length,
-    upsertedRowCount: upsertedRowCount,
-    deletedRowCount: deletedRowCount
+    upsertedRowCount: result.upsertedRowCount,
+    deletedRowCount: result.deletedRowCount
   };
 }
 
@@ -596,77 +628,200 @@ function migrateManagedSheetNames_(spreadsheet, previousMapping, tables) {
   });
 }
 
-function rewriteTableReplacingSite_(spreadsheet, table, siteId, incomingRows) {
-  const sheet = ensureTableSheet_(spreadsheet, table, false);
-  const totalColumns = GCGL_CONFIG.metadataHeaders.length + table.headers.length;
-  const existingRows = readStoredRows_(sheet, totalColumns).filter(function(row) {
-    return String(row[0]) !== siteId;
+/**
+ * 單一隱藏資料表格式：
+ * table_key | site_id | record_id | updated_at | operation_id | values_json
+ *
+ * 對 App 的 JSON API 完全不變；只有 Apps Script 內部儲存方式由多張 raw sheet
+ * 改成一張 __GCGL_DATA。
+ */
+function ensureUnifiedDataReady_(spreadsheet) {
+  ensureUnifiedDataSheet_(spreadsheet);
+  migrateLegacyRawSheets_(spreadsheet);
+}
+
+function ensureUnifiedDataSheet_(spreadsheet) {
+  const previousActiveSheet = spreadsheet.getActiveSheet();
+  let sheet = spreadsheet.getSheetByName(GCGL_CONFIG.rawDataSheetName);
+  if (!sheet) sheet = spreadsheet.insertSheet(GCGL_CONFIG.rawDataSheetName);
+  hideInternalSheet_(spreadsheet, sheet, previousActiveSheet);
+
+  const headers = GCGL_CONFIG.unifiedDataHeaders;
+  ensureSheetSize_(sheet, 2, headers.length);
+  if (sheet.getLastRow() >= 1) {
+    const existingHeaders = sheet.getRange(1, 1, 1, headers.length).getDisplayValues()[0];
+    const hasHeaderContent = existingHeaders.some(function(value) { return optionalString_(value) !== ""; });
+    if (hasHeaderContent && !arraysEqual_(existingHeaders, headers)) {
+      throw new Error("隱藏資料表 __GCGL_DATA 的欄位格式不正確，請勿手動修改此工作表。");
+    }
+  }
+
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, headers.length)
+    .setBackground("#E9EEF3")
+    .setFontColor("#263238")
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle");
+  sheet.setRowHeight(1, 30);
+  return sheet;
+}
+
+function readUnifiedDataRows_(spreadsheet) {
+  const sheet = ensureUnifiedDataSheet_(spreadsheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  return sheet
+    .getRange(2, 1, lastRow - 1, GCGL_CONFIG.unifiedDataHeaders.length)
+    .getValues()
+    .filter(function(row) {
+      return optionalString_(row[0]) !== "" && optionalString_(row[2]) !== "";
+    });
+}
+
+function writeUnifiedDataRows_(spreadsheet, rows) {
+  const sheet = ensureUnifiedDataSheet_(spreadsheet);
+  const columnCount = GCGL_CONFIG.unifiedDataHeaders.length;
+  const oldRowCount = Math.max(sheet.getLastRow() - 1, 0);
+  const rowsToClear = Math.max(oldRowCount, rows.length);
+  if (rowsToClear > 0) {
+    ensureSheetSize_(sheet, rowsToClear + 1, columnCount);
+    sheet.getRange(2, 1, rowsToClear, columnCount).clearContent();
+  }
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, columnCount).setValues(rows);
+  }
+}
+
+function toUnifiedStorageRow_(tableKey, storedRow) {
+  const valuesJson = JSON.stringify(storedRow.slice(GCGL_CONFIG.metadataHeaders.length));
+  if (valuesJson.length > GCGL_CONFIG.maxStoredPayloadChars) {
+    throw new Error(
+      "單筆資料內容過長（" + tableKey + " / " + optionalString_(storedRow[1]) +
+      "），請縮短備註或文字內容後再同步。"
+    );
+  }
+  return [
+    tableKey,
+    storedRow[0],
+    storedRow[1],
+    storedRow[2],
+    storedRow[3],
+    valuesJson
+  ];
+}
+
+function parseUnifiedValues_(row, table) {
+  const recordId = optionalString_(row[2]);
+  let values;
+  try {
+    values = JSON.parse(optionalString_(row[5]) || "[]");
+  } catch (_) {
+    throw new Error("__GCGL_DATA 內的 JSON 資料損壞：" + table.key + " / " + recordId);
+  }
+  if (!Array.isArray(values)) {
+    throw new Error("__GCGL_DATA 內的資料格式不正確：" + table.key + " / " + recordId);
+  }
+  if (values.length !== table.headers.length) {
+    throw new Error(
+      "資料表「" + table.sheetName + "」欄位版本不一致，請從 App 執行完整重新同步。"
+    );
+  }
+  return values;
+}
+
+/** 一次讀取 __GCGL_DATA，再依 table_key 還原成舊版報表程式使用的 row 格式。 */
+function readStoredRowsByTable_(spreadsheet, tables) {
+  ensureUnifiedDataReady_(spreadsheet);
+  const tableByKey = {};
+  const rowsByKey = {};
+  tables.forEach(function(table) {
+    tableByKey[table.key] = table;
+    rowsByKey[table.key] = [];
   });
-  writeStoredRows_(sheet, table, existingRows.concat(incomingRows));
+
+  readUnifiedDataRows_(spreadsheet).forEach(function(row) {
+    const tableKey = optionalString_(row[0]);
+    const table = tableByKey[tableKey];
+    if (!table) return;
+    const values = parseUnifiedValues_(row, table);
+    rowsByKey[tableKey].push([
+      row[1],
+      row[2],
+      row[3],
+      row[4]
+    ].concat(values));
+  });
+  return rowsByKey;
 }
 
-function rewriteWholeTable_(spreadsheet, table, incomingRows) {
-  const sheet = ensureTableSheet_(spreadsheet, table, true);
-  writeStoredRows_(sheet, table, incomingRows);
-}
-
-function applyRowDelta_(spreadsheet, table, operationId, sentAt) {
-  const sheet = ensureTableSheet_(spreadsheet, table, false);
-  const totalColumns = GCGL_CONFIG.metadataHeaders.length + table.headers.length;
-  const existingRowCount = Math.max(sheet.getLastRow() - 1, 0);
-  const rowNumberByRecordId = {};
-  if (existingRowCount > 0) {
-    sheet.getRange(2, 2, existingRowCount, 1).getDisplayValues().forEach(function(values, index) {
-      const recordId = optionalString_(values[0]);
-      if (!recordId) return;
-      if (rowNumberByRecordId[recordId]) {
-        throw new Error("隱藏資料表「" + table.sheetName + "」含有重複 recordId，請執行完整同步。");
+/** syncRows 專用：整張索引只讀一次，避免每個 table 都重新掃描 __GCGL_DATA。 */
+function applyUnifiedRowDeltas_(spreadsheet, tables, operationId, sentAt) {
+  const sheet = ensureUnifiedDataSheet_(spreadsheet);
+  const lastRow = sheet.getLastRow();
+  const rowNumberByKey = {};
+  if (lastRow >= 2) {
+    sheet.getRange(2, 1, lastRow - 1, 3).getDisplayValues().forEach(function(values, index) {
+      const tableKey = optionalString_(values[0]);
+      const recordId = optionalString_(values[2]);
+      if (!tableKey || !recordId) return;
+      const key = unifiedRecordKey_(tableKey, recordId);
+      if (rowNumberByKey[key]) {
+        throw new Error("__GCGL_DATA 含有重複 recordId：" + tableKey + " / " + recordId + "，請執行完整同步。");
       }
-      rowNumberByRecordId[recordId] = index + 2;
+      rowNumberByKey[key] = index + 2;
     });
   }
 
   const updates = [];
   const inserts = [];
-  table.upserts.forEach(function(row) {
-    const storedRow = buildStoredRow_(
-      requiredString_(row.siteId, table.key + ".upserts[].siteId"),
-      row,
-      table.headers.length,
-      operationId,
-      sentAt
-    );
-    const rowNumber = rowNumberByRecordId[row.recordId];
-    if (rowNumber) {
-      updates.push({ rowNumber: rowNumber, values: storedRow });
-    } else {
-      inserts.push(storedRow);
-    }
+  const deletedRowNumbers = [];
+
+  tables.forEach(function(table) {
+    table.upserts.forEach(function(row) {
+      const storedRow = buildStoredRow_(
+        requiredString_(row.siteId, table.key + ".upserts[].siteId"),
+        row,
+        table.headers.length,
+        operationId,
+        sentAt
+      );
+      const unifiedRow = toUnifiedStorageRow_(table.key, storedRow);
+      const key = unifiedRecordKey_(table.key, row.recordId);
+      const rowNumber = rowNumberByKey[key];
+      if (rowNumber) {
+        updates.push({ rowNumber: rowNumber, values: unifiedRow });
+      } else {
+        inserts.push(unifiedRow);
+      }
+    });
+
+    table.deletedRecordIds.forEach(function(recordId) {
+      const rowNumber = rowNumberByKey[unifiedRecordKey_(table.key, recordId)];
+      if (rowNumber) deletedRowNumbers.push(rowNumber);
+    });
   });
 
-  writeStoredRowUpdates_(sheet, table, totalColumns, updates);
-
-  const deletedRowNumbers = table.deletedRecordIds
-    .map(function(recordId) { return rowNumberByRecordId[recordId]; })
-    .filter(function(rowNumber) { return Boolean(rowNumber); });
+  writeUnifiedRowUpdates_(sheet, updates);
   deleteStoredRows_(sheet, deletedRowNumbers);
 
   if (inserts.length > 0) {
     const startRow = sheet.getLastRow() + 1;
-    ensureSheetSize_(sheet, startRow + inserts.length - 1, totalColumns);
-    sheet.getRange(startRow, 1, inserts.length, totalColumns).setValues(inserts);
-    applyColumnFormatsToRange_(sheet, table, startRow, inserts.length);
+    const columnCount = GCGL_CONFIG.unifiedDataHeaders.length;
+    ensureSheetSize_(sheet, startRow + inserts.length - 1, columnCount);
+    sheet.getRange(startRow, 1, inserts.length, columnCount).setValues(inserts);
   }
 
-  refreshFilter_(sheet, totalColumns);
   return {
     upsertedRowCount: updates.length + inserts.length,
-    deletedRowCount: deletedRowNumbers.length
+    deletedRowCount: uniqueNumbers_(deletedRowNumbers).length
   };
 }
 
-function writeStoredRowUpdates_(sheet, table, totalColumns, updates) {
+function writeUnifiedRowUpdates_(sheet, updates) {
   if (updates.length === 0) return;
+  const columnCount = GCGL_CONFIG.unifiedDataHeaders.length;
   const sorted = updates.slice().sort(function(left, right) {
     return left.rowNumber - right.rowNumber;
   });
@@ -674,9 +829,8 @@ function writeStoredRowUpdates_(sheet, table, totalColumns, updates) {
   const flushGroup = function() {
     if (group.length === 0) return;
     const startRow = group[0].rowNumber;
-    sheet.getRange(startRow, 1, group.length, totalColumns)
+    sheet.getRange(startRow, 1, group.length, columnCount)
       .setValues(group.map(function(item) { return item.values; }));
-    applyColumnFormatsToRange_(sheet, table, startRow, group.length);
     group = [];
   };
   sorted.forEach(function(item) {
@@ -686,6 +840,10 @@ function writeStoredRowUpdates_(sheet, table, totalColumns, updates) {
     group.push(item);
   });
   flushGroup();
+}
+
+function unifiedRecordKey_(tableKey, recordId) {
+  return optionalString_(tableKey) + "\u0001" + optionalString_(recordId);
 }
 
 function deleteStoredRows_(sheet, rowNumbers) {
@@ -709,121 +867,105 @@ function deleteStoredRows_(sheet, rowNumbers) {
   });
 }
 
-function removeSiteRowsFromExistingSheet_(sheet, siteId) {
-  const lastRow = sheet.getLastRow();
-  const lastColumn = sheet.getLastColumn();
-  if (lastRow < 2 || lastColumn < GCGL_CONFIG.metadataHeaders.length) return 0;
+/**
+ * 將舊版 __GCGL_DATA_<tableKey> 一次性搬入 __GCGL_DATA。
+ * 所有可辨識資料寫入並重新讀取驗證成功後，才刪除舊 hidden sheets。
+ */
+function migrateLegacyRawSheets_(spreadsheet) {
+  const legacySheets = GCGL_CONFIG.expectedTableKeys.map(function(tableKey) {
+    return {
+      tableKey: tableKey,
+      sheet: spreadsheet.getSheetByName(legacyRawSheetName_(tableKey))
+    };
+  }).filter(function(item) { return Boolean(item.sheet); });
+  if (legacySheets.length === 0) return;
 
-  const rows = sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues();
-  const retained = rows.filter(function(row) {
-    return String(row[0]) !== siteId;
+  const existingRows = readUnifiedDataRows_(spreadsheet);
+  const rowByKey = {};
+  const order = [];
+  existingRows.forEach(function(row) {
+    const key = unifiedRecordKey_(row[0], row[2]);
+    if (!rowByKey[key]) order.push(key);
+    rowByKey[key] = row;
   });
-  const removedCount = rows.length - retained.length;
-  if (removedCount === 0) return 0;
 
-  sheet.getRange(2, 1, lastRow - 1, lastColumn).clearContent();
-  if (retained.length > 0) {
-    sheet.getRange(2, 1, retained.length, lastColumn).setValues(retained);
-  }
-  refreshFilter_(sheet, lastColumn);
-  return removedCount;
-}
+  const schemaByKey = {};
+  loadTableSchemas_().forEach(function(schema) {
+    if (schema && schema.key) schemaByKey[schema.key] = schema;
+  });
+  const recoveredSchemas = [];
+  const legacyKeys = {};
 
-function ensureTableSheet_(spreadsheet, table, allowsHeaderReplacement) {
-  const storageName = rawSheetName_(table.key);
-  const previousActiveSheet = spreadsheet.getActiveSheet();
-  let sheet = spreadsheet.getSheetByName(storageName);
-  const isNewSheet = !sheet;
-  if (!sheet) {
-    sheet = spreadsheet.insertSheet(storageName);
-  }
-  // insertSheet 會自動選中新增分頁；先隱藏，再開始資料遷移與寫入。
-  hideInternalSheet_(spreadsheet, sheet, previousActiveSheet);
-  if (isNewSheet) {
-    migrateLegacyTableData_(spreadsheet, sheet, table);
-  }
+  legacySheets.forEach(function(item) {
+    const sheet = item.sheet;
+    if (sheet.getLastRow() < 1) return;
+    const lastColumn = sheet.getLastColumn();
+    if (lastColumn < GCGL_CONFIG.metadataHeaders.length) {
+      throw new Error("舊版隱藏資料表「" + sheet.getName() + "」欄位不足，已保留原表未刪除。");
+    }
 
-  const expectedHeaders = GCGL_CONFIG.metadataHeaders.concat(table.headers);
-  ensureSheetSize_(sheet, 2, expectedHeaders.length);
+    const headerRow = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
+    if (!arraysEqual_(headerRow.slice(0, GCGL_CONFIG.metadataHeaders.length), GCGL_CONFIG.metadataHeaders)) {
+      throw new Error("舊版隱藏資料表「" + sheet.getName() + "」格式無法辨識，已保留原表未刪除。");
+    }
+    const visibleHeaders = headerRow.slice(GCGL_CONFIG.metadataHeaders.length);
+    if (!schemaByKey[item.tableKey] && visibleHeaders.length > 0) {
+      recoveredSchemas.push({
+        key: item.tableKey,
+        sheetName: loadManagedTables_()[item.tableKey] || GCGL_CONFIG.defaultSheetNames[item.tableKey],
+        headers: visibleHeaders,
+        widths: [],
+        formats: []
+      });
+    }
 
-  if (sheet.getLastRow() >= 2) {
-    const existingHeaders = sheet
-      .getRange(1, 1, 1, Math.min(sheet.getLastColumn(), expectedHeaders.length))
-      .getDisplayValues()[0];
-    if (!arraysEqual_(existingHeaders, expectedHeaders)) {
-      if (allowsHeaderReplacement) {
-        // fullSync 是欄位版本或顯示語言改變時的修復入口。
-        sheet.clearContents();
-      } else {
+    if (sheet.getLastRow() < 2) return;
+    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastColumn).getValues();
+    const seenInLegacySheet = {};
+    rows.forEach(function(row, index) {
+      const siteId = optionalString_(row[0]);
+      const recordId = optionalString_(row[1]);
+      const isBlank = row.every(function(value) { return optionalString_(value) === ""; });
+      if (isBlank) return;
+      if (!siteId || !recordId) {
         throw new Error(
-          "資料表「" + table.sheetName + "」欄位已變更，請從 App 執行完整重新同步。"
+          "舊版隱藏資料表「" + sheet.getName() + "」第 " + (index + 2) +
+          " 列缺少 siteId 或 recordId，已停止搬移並保留原表。"
         );
       }
-    }
-  }
-
-  sheet.getRange(1, 1, 1, expectedHeaders.length).setValues([expectedHeaders]);
-  formatTableSheet_(sheet, table, expectedHeaders.length);
-  return sheet;
-}
-
-function readStoredRows_(sheet, totalColumns) {
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
-  return sheet.getRange(2, 1, lastRow - 1, totalColumns).getValues();
-}
-
-function writeStoredRows_(sheet, table, rows) {
-  const totalColumns = GCGL_CONFIG.metadataHeaders.length + table.headers.length;
-  const oldDataRows = Math.max(sheet.getLastRow() - 1, 0);
-  const rowsToClear = Math.max(oldDataRows, rows.length);
-  if (rowsToClear > 0) {
-    ensureSheetSize_(sheet, rowsToClear + 1, totalColumns);
-    sheet.getRange(2, 1, rowsToClear, totalColumns).clearContent();
-  }
-  if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, totalColumns).setValues(rows);
-    applyColumnFormats_(sheet, table, rows.length);
-  }
-  refreshFilter_(sheet, totalColumns);
-}
-
-function formatTableSheet_(sheet, table, totalColumns) {
-  sheet.setFrozenRows(1);
-  const header = sheet.getRange(1, 1, 1, totalColumns);
-  header
-    .setBackground("#E9EEF3")
-    .setFontColor("#263238")
-    .setFontWeight("bold")
-    .setHorizontalAlignment("center")
-    .setVerticalAlignment("middle");
-  sheet.setRowHeight(1, 30);
-}
-
-function applyColumnFormats_(sheet, table, rowCount) {
-  applyColumnFormatsToRange_(sheet, table, 2, rowCount);
-}
-
-function applyColumnFormatsToRange_(sheet, table, startRow, rowCount) {
-  if (rowCount <= 0) return;
-  if (!Array.isArray(table.formats)) return;
-  const visibleStartColumn = GCGL_CONFIG.metadataHeaders.length + 1;
-  table.formats.forEach(function(format, index) {
-    if (!format) return;
-    sheet.getRange(startRow, visibleStartColumn + index, rowCount, 1)
-      .setNumberFormat(String(format));
+      const key = unifiedRecordKey_(item.tableKey, recordId);
+      if (seenInLegacySheet[key]) {
+        throw new Error("舊版隱藏資料表「" + sheet.getName() + "」含重複 recordId：" + recordId);
+      }
+      seenInLegacySheet[key] = true;
+      legacyKeys[key] = true;
+      const storedRow = row.slice(0, GCGL_CONFIG.metadataHeaders.length + visibleHeaders.length);
+      const unifiedRow = toUnifiedStorageRow_(item.tableKey, storedRow);
+      if (!rowByKey[key]) order.push(key);
+      // 搬移階段以舊版 raw sheet 為來源，確保第一次轉換完整保留原資料。
+      rowByKey[key] = unifiedRow;
+    });
   });
-}
 
-function refreshFilter_(sheet, totalColumns) {
-  const filter = sheet.getFilter();
-  if (filter) filter.remove();
-  const visibleColumnCount = totalColumns - GCGL_CONFIG.metadataHeaders.length;
-  if (visibleColumnCount <= 0) return;
-  const filterRows = Math.max(sheet.getLastRow(), 2);
-  sheet
-    .getRange(1, GCGL_CONFIG.metadataHeaders.length + 1, filterRows, visibleColumnCount)
-    .createFilter();
+  if (recoveredSchemas.length > 0) saveTableSchemas_(recoveredSchemas);
+  const mergedRows = order.map(function(key) { return rowByKey[key]; });
+  writeUnifiedDataRows_(spreadsheet, mergedRows);
+  SpreadsheetApp.flush();
+
+  const verified = {};
+  readUnifiedDataRows_(spreadsheet).forEach(function(row) {
+    verified[unifiedRecordKey_(row[0], row[2])] = true;
+  });
+  const missingKeys = Object.keys(legacyKeys).filter(function(key) { return !verified[key]; });
+  if (missingKeys.length > 0) {
+    throw new Error("舊版資料搬移驗證失敗，已保留舊版隱藏工作表。請重新執行 setupGCGLSync()。" );
+  }
+
+  legacySheets.forEach(function(item) {
+    if (spreadsheet.getSheets().length > 1 && item.sheet) {
+      spreadsheet.deleteSheet(item.sheet);
+    }
+  });
 }
 
 // MARK: - 可閱讀報表分頁
@@ -835,10 +977,9 @@ function renderReportSheets_(spreadsheet, tables, changedKeys) {
   const previousActiveSheetId = activeSheet ? activeSheet.getSheetId() : null;
   const valuesByKey = {};
   const recordIdsByKey = {};
+  const storedRowsByKey = readStoredRowsByTable_(spreadsheet, tables);
   tables.forEach(function(table) {
-    const rawSheet = spreadsheet.getSheetByName(rawSheetName_(table.key));
-    const totalColumns = GCGL_CONFIG.metadataHeaders.length + table.headers.length;
-    const storedRows = rawSheet ? readStoredRows_(rawSheet, totalColumns) : [];
+    const storedRows = storedRowsByKey[table.key] || [];
     valuesByKey[table.key] = storedRows.map(function(row) {
       return row.slice(GCGL_CONFIG.metadataHeaders.length);
     });
@@ -2127,16 +2268,18 @@ function loadManagedTables_() {
   }
 }
 
-function rawSheetName_(tableKey) {
-  return (GCGL_CONFIG.rawSheetPrefix + requiredString_(tableKey, "tableKey")).slice(0, 100);
+/** 舊版每類型一張 hidden sheet 的名稱，只用於一次性資料搬移。 */
+function legacyRawSheetName_(tableKey) {
+  return (GCGL_CONFIG.legacyRawSheetPrefix + requiredString_(tableKey, "tableKey")).slice(0, 100);
 }
 
 function isGCGLInternalSheet_(sheet) {
   const name = sheet.getName();
   return name === GCGL_CONFIG.syncLogSheetName ||
+    name === GCGL_CONFIG.rawDataSheetName ||
     name === "案場儀表板" ||
     name === "__GCGL_DASHBOARD_DATA" ||
-    GCGL_CONFIG.expectedTableKeys.some(function(key) { return name === rawSheetName_(key); });
+    GCGL_CONFIG.expectedTableKeys.some(function(key) { return name === legacyRawSheetName_(key); });
 }
 
 /** Google 不允許隱藏最後一張可見分頁，必要時先建立／顯示總覽。 */
