@@ -10,6 +10,7 @@
  * - syncRows：依 recordId 逐筆新增、修改或刪除資料列
  *
  * 同步要求只更新隱藏原始資料；可見報表由短延遲的單次工作集中重建。
+ * 初始設定會建立每日午夜的總覽更新工作，跨日刷新日期與今日工程記錄。
  *
  * 請先在綁定試算表的 Apps Script 編輯器執行 setupGCGLSync()，
  * 再部署為「網頁應用程式」。
@@ -29,6 +30,9 @@ const GCGL_CONFIG = Object.freeze({
   lastDataSyncAtProperty: "GCGL_LAST_DATA_SYNC_AT",
   reportRebuildHandler: "processPendingGCGLReportRebuild",
   reportRebuildDelayMilliseconds: 5000,
+  dailyOverviewRefreshHandler: "refreshGCGLDailyOverview",
+  dailyOverviewTriggerIdProperty: "GCGL_DAILY_OVERVIEW_TRIGGER_ID",
+  dailyOverviewTimeZoneProperty: "GCGL_DAILY_OVERVIEW_TIME_ZONE",
   allSitesLabel: "全部案場",
   syncLogSheetName: "__GCGL_SYNC_LOG",
   rawDataSheetName: "__GCGL_DATA",
@@ -157,6 +161,8 @@ function setupGCGLSync() {
   if (properties.getProperty(GCGL_CONFIG.reportRebuildPendingProperty) === "1") {
     ensureDeferredReportTrigger_();
   }
+  ensureDailyOverviewTrigger_(spreadsheet);
+  refreshGCGLDailyOverview();
 
   return {
     spreadsheetId: spreadsheet.getId(),
@@ -471,6 +477,57 @@ function rebuildGCGLReports() {
   resetDeferredReportTriggers_();
 }
 
+/** 每日跨日後只排入總覽更新；不寫入原始資料，也不變更最後同步時間。 */
+function refreshGCGLDailyOverview() {
+  // 與 App 寫入共用短鎖，避免覆蓋其他尚待重建的分頁清單。
+  // 實際報表仍由原有單次工作處理，不在這裡持鎖重建。
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    if (!isConfigured_()) return;
+    const hasOverview = loadTableSchemas_().some(function(table) {
+      return table.key === "site_overview";
+    });
+    if (!hasOverview) return;
+    markReportsPending_(["site_overview"], true);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** 依試算表時區，每日 00:00～01:00 執行；重新設定不重複建立排程。 */
+function ensureDailyOverviewTrigger_(spreadsheet) {
+  const properties = PropertiesService.getScriptProperties();
+  const timezone = spreadsheet.getSpreadsheetTimeZone() || Session.getScriptTimeZone();
+  const savedId = properties.getProperty(GCGL_CONFIG.dailyOverviewTriggerIdProperty);
+  const savedTimezone = properties.getProperty(GCGL_CONFIG.dailyOverviewTimeZoneProperty);
+  const triggers = ScriptApp.getProjectTriggers().filter(function(trigger) {
+    return trigger.getHandlerFunction() === GCGL_CONFIG.dailyOverviewRefreshHandler;
+  });
+  if (savedTimezone === timezone && triggers.some(function(trigger) {
+    return trigger.getUniqueId() === savedId;
+  })) {
+    triggers.filter(function(trigger) {
+      return trigger.getUniqueId() !== savedId;
+    }).forEach(function(trigger) { ScriptApp.deleteTrigger(trigger); });
+    return;
+  }
+
+  // 新排程成功建立後再移除舊排程，設定失敗時保留既有的每日更新。
+  const trigger = ScriptApp
+    .newTrigger(GCGL_CONFIG.dailyOverviewRefreshHandler)
+    .timeBased()
+    .atHour(0)
+    .everyDays(1)
+    .inTimezone(timezone)
+    .create();
+  triggers.forEach(function(item) { ScriptApp.deleteTrigger(item); });
+  properties.setProperties({
+    [GCGL_CONFIG.dailyOverviewTriggerIdProperty]: trigger.getUniqueId(),
+    [GCGL_CONFIG.dailyOverviewTimeZoneProperty]: timezone
+  });
+}
+
 /**
  * 同步完成後短暫延遲再執行；不持有同步寫入使用的 ScriptLock，避免大型報表
  * 重建期間阻塞 App，造成 HTTP 逾時或 NSURLErrorDomain -1011。
@@ -517,7 +574,7 @@ function processPendingGCGLReportRebuild(event) {
   }
 }
 
-function markReportsPending_(changedKeys) {
+function markReportsPending_(changedKeys, throwOnTriggerError) {
   const properties = PropertiesService.getScriptProperties();
   const generation = Number(
     properties.getProperty(GCGL_CONFIG.reportRebuildGenerationProperty) || "0"
@@ -538,6 +595,7 @@ function markReportsPending_(changedKeys) {
     // 原始資料已同步完成；若舊部署尚未授權建立觸發條件，不應讓 App 誤判同步失敗。
     // 使用者下次執行 setupGCGLSync() 時會完成授權與建立工作。
     console.error(error && error.stack ? error.stack : error);
+    if (throwOnTriggerError) throw error;
   }
 }
 
