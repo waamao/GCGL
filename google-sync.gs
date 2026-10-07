@@ -102,6 +102,7 @@ function onOpen() {
     .createMenu("GCGL 同步")
     .addItem("初始設定／查看同步密碼", "setupGCGLSyncFromMenu")
     .addItem("重建報表版面", "rebuildGCGLReports")
+    .addItem("設定編輯警告（單價除外）", "configureGCGLReportWarnings")
     .addItem("重新產生同步密碼", "rotateGCGLSyncTokenFromMenu")
     .addToUi();
   hideInternalSheets_(SpreadsheetApp.getActiveSpreadsheet());
@@ -163,6 +164,7 @@ function setupGCGLSync() {
   }
   ensureDailyOverviewTrigger_(spreadsheet);
   refreshGCGLDailyOverview();
+  applyGCGLReportProtection_(spreadsheet);
 
   return {
     spreadsheetId: spreadsheet.getId(),
@@ -701,7 +703,10 @@ function ensureUnifiedDataReady_(spreadsheet) {
 function ensureUnifiedDataSheet_(spreadsheet) {
   const previousActiveSheet = spreadsheet.getActiveSheet();
   let sheet = spreadsheet.getSheetByName(GCGL_CONFIG.rawDataSheetName);
-  if (!sheet) sheet = spreadsheet.insertSheet(GCGL_CONFIG.rawDataSheetName);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(GCGL_CONFIG.rawDataSheetName);
+    protectGCGLSheet_(sheet, []);
+  }
   hideInternalSheet_(spreadsheet, sheet, previousActiveSheet);
 
   const headers = GCGL_CONFIG.unifiedDataHeaders;
@@ -1029,83 +1034,96 @@ function migrateLegacyRawSheets_(spreadsheet) {
 // MARK: - 可閱讀報表分頁
 
 function renderReportSheets_(spreadsheet, tables, changedKeys) {
-  hideInternalSheets_(spreadsheet);
-  removeLegacyDashboardSheets_(spreadsheet);
-  const activeSheet = spreadsheet.getActiveSheet();
-  const previousActiveSheetId = activeSheet ? activeSheet.getSheetId() : null;
-  const valuesByKey = {};
-  const recordIdsByKey = {};
-  const storedRowsByKey = readStoredRowsByTable_(spreadsheet, tables);
-  tables.forEach(function(table) {
-    const storedRows = storedRowsByKey[table.key] || [];
-    valuesByKey[table.key] = storedRows.map(function(row) {
-      return row.slice(GCGL_CONFIG.metadataHeaders.length);
+  let reportError = null;
+  try {
+    hideInternalSheets_(spreadsheet);
+    removeLegacyDashboardSheets_(spreadsheet);
+    const activeSheet = spreadsheet.getActiveSheet();
+    const previousActiveSheetId = activeSheet ? activeSheet.getSheetId() : null;
+    const valuesByKey = {};
+    const recordIdsByKey = {};
+    const storedRowsByKey = readStoredRowsByTable_(spreadsheet, tables);
+    tables.forEach(function(table) {
+      const storedRows = storedRowsByKey[table.key] || [];
+      valuesByKey[table.key] = storedRows.map(function(row) {
+        return row.slice(GCGL_CONFIG.metadataHeaders.length);
+      });
+      recordIdsByKey[table.key] = storedRows.map(function(row) {
+        return optionalString_(row[1]);
+      });
     });
-    recordIdsByKey[table.key] = storedRows.map(function(row) {
-      return optionalString_(row[1]);
-    });
-  });
 
-  const siteNames = collectReportSiteNames_(tables, valuesByKey);
-  const reportKeys = reportKeysForChangedTables_(changedKeys);
-  const materialCatalogTable = tables.find(function(table) {
-    return table.key === "material_catalog";
-  });
-  if (materialCatalogTable && (
-    reportKeys.indexOf(materialCatalogTable.key) !== -1 ||
-    !spreadsheet.getSheetByName(materialCatalogTable.sheetName)
-  )) {
-    renderMaterialCatalogReport_(
-      spreadsheet,
-      materialCatalogTable,
-      valuesByKey.material_catalog || [],
-      recordIdsByKey.material_catalog || []
-    );
-  }
-  const materialSummaryTable = materialCatalogTable ? tables.find(function(table) {
-    return table.key === "material_summary";
-  }) : null;
-  tables.filter(function(table) {
-    return ["material_catalog", "monthly_progress"].indexOf(table.key) === -1 &&
-      reportKeys.indexOf(table.key) !== -1;
-  }).sort(function(left, right) {
-    // 總覽的材料成本引用材料統計小計；先建立來源報表，避免首次同步產生 #REF!。
-    return Number(left.key === "site_overview") - Number(right.key === "site_overview");
-  }).forEach(function(table) {
-    if (table.key === "site_overview") {
-      renderSiteOverviewReport_(
+    const siteNames = collectReportSiteNames_(tables, valuesByKey);
+    const reportKeys = reportKeysForChangedTables_(changedKeys);
+    const materialCatalogTable = tables.find(function(table) {
+      return table.key === "material_catalog";
+    });
+    if (materialCatalogTable && (
+      reportKeys.indexOf(materialCatalogTable.key) !== -1 ||
+      !spreadsheet.getSheetByName(materialCatalogTable.sheetName)
+    )) {
+      renderMaterialCatalogReport_(
         spreadsheet,
-        table,
-        valuesByKey,
-        recordIdsByKey,
-        siteNames,
-        materialSummaryTable,
-        tables.find(function(item) { return item.key === "monthly_progress"; })
+        materialCatalogTable,
+        valuesByKey.material_catalog || [],
+        recordIdsByKey.material_catalog || []
       );
-    } else if (table.key === "attendance") {
-      renderAttendanceReport_(
-        spreadsheet,
-        table,
-        valuesByKey[table.key],
-        recordIdsByKey[table.key]
-      );
-    } else if (
-      materialCatalogTable &&
-      ["material_summary", "material_orders"].indexOf(table.key) !== -1
-    ) {
-      renderMaterialCostReport_(
-        spreadsheet,
-        table,
-        valuesByKey[table.key],
-        siteNames,
-        materialCatalogTable.sheetName
-      );
-    } else {
-      renderFlatReport_(spreadsheet, table, valuesByKey[table.key], siteNames);
     }
-  });
-  removeMonthlyProgressReportSheet_(spreadsheet, tables);
-  placeReportTabs_(spreadsheet, tables, previousActiveSheetId);
+    const materialSummaryTable = materialCatalogTable ? tables.find(function(table) {
+      return table.key === "material_summary";
+    }) : null;
+    tables.filter(function(table) {
+      return ["material_catalog", "monthly_progress"].indexOf(table.key) === -1 &&
+        reportKeys.indexOf(table.key) !== -1;
+    }).sort(function(left, right) {
+      // 總覽的材料成本引用材料統計小計；先建立來源報表，避免首次同步產生 #REF!。
+      return Number(left.key === "site_overview") - Number(right.key === "site_overview");
+    }).forEach(function(table) {
+      if (table.key === "site_overview") {
+        renderSiteOverviewReport_(
+          spreadsheet,
+          table,
+          valuesByKey,
+          recordIdsByKey,
+          siteNames,
+          materialSummaryTable,
+          tables.find(function(item) { return item.key === "monthly_progress"; })
+        );
+      } else if (table.key === "attendance") {
+        renderAttendanceReport_(
+          spreadsheet,
+          table,
+          valuesByKey[table.key],
+          recordIdsByKey[table.key]
+        );
+      } else if (
+        materialCatalogTable &&
+        ["material_summary", "material_orders"].indexOf(table.key) !== -1
+      ) {
+        renderMaterialCostReport_(
+          spreadsheet,
+          table,
+          valuesByKey[table.key],
+          siteNames,
+          materialCatalogTable.sheetName
+        );
+      } else {
+        renderFlatReport_(spreadsheet, table, valuesByKey[table.key], siteNames);
+      }
+    });
+    removeMonthlyProgressReportSheet_(spreadsheet, tables);
+    placeReportTabs_(spreadsheet, tables, previousActiveSheetId);
+  } catch (error) {
+    reportError = error;
+    throw error;
+  } finally {
+    try {
+      applyGCGLReportProtection_(spreadsheet);
+    } catch (error) {
+      if (!reportError) throw error;
+      console.error("GCGL 報表保護未完成：" + error.message);
+    }
+  }
 }
 
 /** 月份資料仍保存在隱藏原始資料分頁；移除不再使用的可見圖表分頁。 */
@@ -2083,6 +2101,83 @@ function writeReportTableBlock_(sheet, startRow, startColumn, headers, rows, wid
   };
 }
 
+/** 由擁有者手動執行；不改動資料、單價、同步密碼或部署網址。 */
+function configureGCGLReportWarnings() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet() || configuredSpreadsheet_();
+  applyGCGLReportProtection_(spreadsheet);
+  console.log("已設定編輯警告；僅材料單價表的單價輸入格不警告。" +
+    "包含擁有者在內的編輯者均可確認警告後繼續修改，這不是禁止編輯。");
+}
+
+/** 保留舊函式名稱，方便已使用鎖定版的使用者套用新的警告模式。 */
+function lockGCGLReportSheets() {
+  return configureGCGLReportWarnings();
+}
+
+/** 工作表整頁編輯警告，包含空白格與隱藏資料；有效材料列的 D 欄不警告。 */
+function applyGCGLReportProtection_(spreadsheet) {
+  const catalog = loadTableSchemas_().find(function(table) {
+    return table.key === "material_catalog";
+  });
+  const catalogName = catalog ? catalog.sheetName :
+    loadManagedTables_().material_catalog || GCGL_CONFIG.defaultSheetNames.material_catalog;
+  spreadsheet.getSheets().forEach(function(sheet) {
+    protectGCGLSheet_(sheet, materialPriceInputRanges_(sheet, catalogName));
+  });
+}
+
+function materialPriceInputRanges_(sheet, catalogName) {
+  if (sheet.getName() !== catalogName || sheet.getMaxColumns() < 4 ||
+      sheet.getLastRow() < 2) return [];
+  if (!arraysEqual_(sheet.getRange(1, 1, 1, 4).getValues()[0],
+      ["品項識別碼", "分類", "品項名稱", "單價"])) return [];
+  const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  const ranges = [];
+  let start = -1;
+  for (let index = 0; index <= ids.length; index++) {
+    const hasItem = index < ids.length && optionalString_(ids[index][0]) !== "";
+    if (hasItem && start === -1) start = index;
+    if (!hasItem && start !== -1) {
+      ranges.push(sheet.getRange(start + 2, 4, index - start, 1));
+      start = -1;
+    }
+  }
+  return ranges;
+}
+
+function sameProtectionRanges_(left, right) {
+  if (left.length !== right.length) return false;
+  return left.every(function(range, index) {
+    const target = right[index];
+    return range.getRow() === target.getRow() && range.getColumn() === target.getColumn() &&
+      range.getNumRows() === target.getNumRows() && range.getNumColumns() === target.getNumColumns();
+  });
+}
+
+/** 只維護本程式的保護，不移除使用者既有的其他保護規則。 */
+function protectGCGLSheet_(sheet, inputRanges) {
+  const description = "GCGL：編輯前警告（材料單價除外）";
+  const legacyDescription = "GCGL：自動報表唯讀（僅材料單價可輸入）";
+  const managed = sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET)
+    .filter(function(protection) {
+      const existingDescription = protection.getDescription();
+      return existingDescription === description || existingDescription === legacyDescription;
+    });
+  if (managed.some(function(protection) { return !protection.canEdit(); })) {
+    throw new Error("無法更新「" + sheet.getName() + "」的 GCGL 保護，請由原設定帳號執行。");
+  }
+  const protection = managed[0] || sheet.protect();
+  protection.setDescription(description);
+  // 直接把本程式的舊限制編輯規則轉為警告；不另外留下擋住編輯的舊規則。
+  // 警告模式不調整編輯者權限，擁有者與其他編輯者都能確認後繼續修改。
+  if (!protection.isWarningOnly()) protection.setWarningOnly(true);
+  if (!sameProtectionRanges_(protection.getUnprotectedRanges(), inputRanges)) {
+    protection.setUnprotectedRanges(inputRanges);
+  }
+  // 先完成警告與例外範圍，再清理本程式的重複規則。
+  managed.slice(1).forEach(function(duplicate) { duplicate.remove(); });
+}
+
 function withoutArrayIndex_(values, removedIndex) {
   if (!Array.isArray(values)) return [];
   return values.filter(function(_, index) { return index !== removedIndex; });
@@ -2419,6 +2514,7 @@ function ensureSyncLogSheet_(spreadsheet) {
   let sheet = spreadsheet.getSheetByName(GCGL_CONFIG.syncLogSheetName);
   if (!sheet) {
     sheet = spreadsheet.insertSheet(GCGL_CONFIG.syncLogSheetName);
+    protectGCGLSheet_(sheet, []);
   }
   hideInternalSheet_(spreadsheet, sheet, previousActiveSheet);
   sheet.getRange(1, 1, 1, 4).setValues([[
