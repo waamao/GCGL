@@ -23,6 +23,10 @@ const GCGL_CONFIG = Object.freeze({
   managedTablesProperty: "GCGL_MANAGED_TABLES",
   tableSchemasProperty: "GCGL_TABLE_SCHEMAS",
   reportSelectionPropertyPrefix: "GCGL_REPORT_SITE_SELECTION_",
+  pricingReportLayoutProperty: "GCGL_PRICING_REPORT_LAYOUT",
+  pricingStatisticsSheetName: "計價統計",
+  workLogReportSheetName: "工程記錄",
+  previousWorkLogReportSheetName: "施工記錄",
   reportRebuildPendingProperty: "GCGL_REPORT_REBUILD_PENDING",
   reportRebuildGenerationProperty: "GCGL_REPORT_REBUILD_GENERATION",
   reportRebuildChangedKeysProperty: "GCGL_REPORT_REBUILD_CHANGED_KEYS",
@@ -36,6 +40,10 @@ const GCGL_CONFIG = Object.freeze({
   allSitesLabel: "全部案場",
   syncLogSheetName: "__GCGL_SYNC_LOG",
   rawDataSheetName: "__GCGL_DATA",
+  materialPricesSheetName: "__GCGL_MATERIAL_PRICES",
+  materialPricesHeaders: ["__price_key", "__catalog_id", "__category", "__item", "__unit_price"],
+  materialPriceKeyHeader: "__material_price_key",
+  materialCatalogIdHeader: "__material_catalog_id",
   legacyRawSheetPrefix: "__GCGL_DATA_",
   unifiedDataHeaders: [
     "__table_key",
@@ -102,7 +110,6 @@ function onOpen() {
     .createMenu("GCGL 同步")
     .addItem("初始設定／查看同步密碼", "setupGCGLSyncFromMenu")
     .addItem("重建報表版面", "rebuildGCGLReports")
-    .addItem("設定編輯警告（單價除外）", "configureGCGLReportWarnings")
     .addItem("重新產生同步密碼", "rotateGCGLSyncTokenFromMenu")
     .addToUi();
   hideInternalSheets_(SpreadsheetApp.getActiveSpreadsheet());
@@ -112,12 +119,22 @@ function onOpen() {
 function onEdit(event) {
   if (!event || !event.range) return;
   const range = event.range;
+  if (handleMaterialSummaryPriceEdit_(event)) return;
   if (range.getRow() !== 1 || range.getColumn() !== 1) return;
 
   const sheet = range.getSheet();
   const tables = loadTableSchemas_();
+  if (sheet.getName() === GCGL_CONFIG.pricingStatisticsSheetName) {
+    const selectedSite = optionalString_(range.getValue()) || GCGL_CONFIG.allSitesLabel;
+    const properties = PropertiesService.getScriptProperties();
+    ["pricing_progress", "pricing_detail"].forEach(function(key) {
+      properties.setProperty(reportSelectionPropertyKey_(key), selectedSite);
+    });
+    applyPricingReportSiteFilter_(sheet, selectedSite);
+    return;
+  }
   const table = tables.find(function(item) {
-    return item.sheetName === sheet.getName() && supportsReportSiteSelector_(item.key);
+    return reportSheetName_(item) === sheet.getName() && supportsReportSiteSelector_(item.key);
   });
   if (!table) return;
 
@@ -674,6 +691,8 @@ function clearReportRebuildState_() {
 /** App 顯示語言改變時沿用原工作表，避免留下另一組舊語言分頁。 */
 function migrateManagedSheetNames_(spreadsheet, previousMapping, tables) {
   tables.forEach(function(table) {
+    // 這三類資料的可見名稱由報表控制，不跟著 App 的原始資料表名稱改回舊分頁。
+    if (["pricing_progress", "pricing_detail", "work_logs"].indexOf(table.key) !== -1) return;
     const oldName = previousMapping[table.key];
     if (!oldName || oldName === table.sheetName) return;
 
@@ -1036,6 +1055,8 @@ function migrateLegacyRawSheets_(spreadsheet) {
 function renderReportSheets_(spreadsheet, tables, changedKeys) {
   let reportError = null;
   try {
+    // 重建前補存未觸發 onEdit 的手動單價；公式值不能被誤認成案場覆寫。
+    captureMaterialSummaryPrices_(spreadsheet, tables);
     hideInternalSheets_(spreadsheet);
     removeLegacyDashboardSheets_(spreadsheet);
     const activeSheet = spreadsheet.getActiveSheet();
@@ -1058,6 +1079,10 @@ function renderReportSheets_(spreadsheet, tables, changedKeys) {
     const materialCatalogTable = tables.find(function(table) {
       return table.key === "material_catalog";
     });
+    const materialPriceContext = materialCatalogTable
+      ? buildMaterialPriceContext_(spreadsheet, materialCatalogTable,
+          valuesByKey.material_catalog || [], recordIdsByKey.material_catalog || [], storedRowsByKey)
+      : null;
     if (materialCatalogTable && (
       reportKeys.indexOf(materialCatalogTable.key) !== -1 ||
       !spreadsheet.getSheetByName(materialCatalogTable.sheetName)
@@ -1072,8 +1097,17 @@ function renderReportSheets_(spreadsheet, tables, changedKeys) {
     const materialSummaryTable = materialCatalogTable ? tables.find(function(table) {
       return table.key === "material_summary";
     }) : null;
+    const pricingTables = tables.filter(function(table) {
+      return ["pricing_progress", "pricing_detail"].indexOf(table.key) !== -1;
+    });
+    if (pricingTables.length > 0 && (
+      pricingTables.some(function(table) { return reportKeys.indexOf(table.key) !== -1; }) ||
+      !spreadsheet.getSheetByName(GCGL_CONFIG.pricingStatisticsSheetName)
+    )) {
+      renderPricingStatisticsReport_(spreadsheet, pricingTables, valuesByKey, siteNames);
+    }
     tables.filter(function(table) {
-      return ["material_catalog", "monthly_progress"].indexOf(table.key) === -1 &&
+      return ["material_catalog", "monthly_progress", "pricing_progress", "pricing_detail"].indexOf(table.key) === -1 &&
         reportKeys.indexOf(table.key) !== -1;
     }).sort(function(left, right) {
       // 總覽的材料成本引用材料統計小計；先建立來源報表，避免首次同步產生 #REF!。
@@ -1105,13 +1139,17 @@ function renderReportSheets_(spreadsheet, tables, changedKeys) {
           table,
           valuesByKey[table.key],
           siteNames,
-          materialCatalogTable.sheetName
+          materialCatalogTable.sheetName,
+          materialPriceContext,
+          storedRowsByKey[table.key] || [],
+          materialSummaryTable
         );
       } else {
         renderFlatReport_(spreadsheet, table, valuesByKey[table.key], siteNames);
       }
     });
     removeMonthlyProgressReportSheet_(spreadsheet, tables);
+    removeReplacedReportSheets_(spreadsheet, tables);
     placeReportTabs_(spreadsheet, tables, previousActiveSheetId);
   } catch (error) {
     reportError = error;
@@ -1143,10 +1181,12 @@ function placeReportTabs_(spreadsheet, tables, previousActiveSheetId) {
     "work_logs", "memos", "attendance", "material_summary", "material_orders"
   ];
   let position = 1;
+  const placedSheetIds = {};
   reportOrder.forEach(function(key) {
     const table = tables.find(function(item) { return item.key === key; });
-    const sheet = table && spreadsheet.getSheetByName(table.sheetName);
-    if (!sheet) return;
+    const sheet = table && spreadsheet.getSheetByName(reportSheetName_(table));
+    if (!sheet || placedSheetIds[sheet.getSheetId()]) return;
+    placedSheetIds[sheet.getSheetId()] = true;
     const current = spreadsheet.getSheets()[position - 1];
     if (!current || current.getSheetId() !== sheet.getSheetId()) {
       spreadsheet.setActiveSheet(sheet);
@@ -1177,6 +1217,12 @@ function reportKeysForChangedTables_(changedKeys) {
     ? uniqueStrings_(changedKeys)
     : GCGL_CONFIG.expectedTableKeys.slice();
   const result = keys.slice();
+  if (keys.indexOf("pricing_progress") !== -1 || keys.indexOf("pricing_detail") !== -1) {
+    result.push("pricing_progress", "pricing_detail");
+  }
+  if (keys.indexOf("material_catalog") !== -1 || keys.indexOf("material_summary") !== -1) {
+    result.push("material_summary", "material_orders");
+  }
   if (["work_logs", "memos", "material_orders", "material_summary", "material_catalog", "monthly_progress"].some(function(key) {
     return keys.indexOf(key) !== -1;
   })) {
@@ -1692,6 +1738,14 @@ function renderAttendanceReport_(spreadsheet, table, values, recordIds) {
   );
   mergeAttendanceDateCells_(sheet, values);
   mergeAttendanceOvertimeCells_(sheet, values, recordIds || []);
+  // 日期／加班欄合併完成後再畫框線，避免合併動作留下不完整的表格邊框。
+  const tableRange = sheet.getRange(1, 1, bodyRows.length + 1, table.headers.length);
+  tableRange.setBorder(true, true, true, true, true, true,
+    GCGL_REPORT_COLORS.border, SpreadsheetApp.BorderStyle.SOLID);
+  tableRange.getMergedRanges().forEach(function(range) {
+    range.setBorder(true, true, true, true, false, false,
+      GCGL_REPORT_COLORS.border, SpreadsheetApp.BorderStyle.SOLID);
+  });
   sheet.setFrozenRows(1);
 }
 
@@ -1863,14 +1917,27 @@ function mergeMaterialCatalogRows_(values, recordIds, existingRows) {
   });
 }
 
-/** 材料報表在 App 欄位後追加單價與小計，並直接查詢不會被同步清除的單價表。 */
-function renderMaterialCostReport_(spreadsheet, table, values, siteNames, priceSheetName) {
+/** 材料統計可覆寫案場單價；材料訂購按隱藏識別鍵引用，不依賴顯示列號。 */
+function renderMaterialCostReport_(spreadsheet, table, values, siteNames, priceSheetName,
+    priceContext, storedRows, summaryTable) {
+  if (table.key === "material_summary") captureMaterialSummaryPrices_(spreadsheet, [table]);
+  const context = priceContext || buildMaterialPriceContext_(spreadsheet,
+    {sheetName: priceSheetName}, [], []);
+  const identities = materialReportPriceIdentities_(table, values, storedRows || [], context);
+  saveMaterialPriceEntries_(spreadsheet, identities.map(function(identity) {
+    return [identity.key, identity.catalogId, identity.category, identity.item];
+  }));
   const sheet = prepareReportSheet_(spreadsheet, table.sheetName);
-  const headers = table.headers.concat(["單價", "小計"]);
-  const widths = (table.widths || []).concat([110, 130]);
-  const formats = (table.formats || []).concat(["#,##0.##", "#,##0.##"]);
+  // 舊版硬性數字驗證可能殘留；先移除，避免重建時的空白占位或公式被拒絕。
+  sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).clearDataValidations();
+  const headers = table.headers.concat(["單價", "小計",
+    GCGL_CONFIG.materialPriceKeyHeader, GCGL_CONFIG.materialCatalogIdHeader]);
+  const widths = (table.widths || []).concat([110, 130, 180, 180]);
+  const formats = (table.formats || []).concat(["#,##0.##", "#,##0.##", "@", "@"]);
   const bodyRows = values.length > 0
-    ? values.map(function(row) { return row.concat(["", ""]); })
+    ? values.map(function(row, index) {
+        return row.concat(["", "", identities[index].key, identities[index].catalogId]);
+      })
     : [headers.map(function() { return ""; })];
   const selectedSite = selectedSiteForReport_(table.key, siteNames);
   const tableBlock = writeReportTableBlock_(
@@ -1884,27 +1951,16 @@ function renderMaterialCostReport_(spreadsheet, table, values, siteNames, priceS
   );
 
   if (values.length > 0) {
-    const categoryColumn = table.key === "material_summary" ? 2 : 3;
-    const itemColumn = table.key === "material_summary" ? 3 : 4;
     const quantityColumn = table.key === "material_summary" ? 4 : 5;
     const priceColumn = table.headers.length + 1;
     const subtotalColumn = priceColumn + 1;
-    const priceSheetReference = quoteSheetNameForFormula_(priceSheetName);
     const priceFormulas = [];
     const subtotalFormulas = [];
     for (let index = 0; index < values.length; index += 1) {
       const rowNumber = index + 4;
-      const categoryCell = "$" + reportColumnLetter_(categoryColumn) + rowNumber;
-      const itemCell = "$" + reportColumnLetter_(itemColumn) + rowNumber;
       const quantityCell = "$" + reportColumnLetter_(quantityColumn) + rowNumber;
       const priceCell = "$" + reportColumnLetter_(priceColumn) + rowNumber;
-      priceFormulas.push([
-        "=IF(COUNTIFS(" + priceSheetReference + "!$B:$B," + categoryCell +
-          "," + priceSheetReference + "!$C:$C," + itemCell +
-          "," + priceSheetReference + "!$D:$D,\"<>\")=0,\"\",SUMIFS(" +
-          priceSheetReference + "!$D:$D," + priceSheetReference + "!$B:$B," +
-          categoryCell + "," + priceSheetReference + "!$C:$C," + itemCell + "))"
-      ]);
+      priceFormulas.push([materialReportPriceFormula_(table, rowNumber, priceSheetName, summaryTable)]);
       subtotalFormulas.push([
         "=IF(OR(" + priceCell + "=\"\"," + quantityCell + "=\"\"),\"\"," +
           quantityCell + "*" + priceCell + ")"
@@ -1912,12 +1968,253 @@ function renderMaterialCostReport_(spreadsheet, table, values, siteNames, priceS
     }
     sheet.getRange(4, priceColumn, values.length, 1).setFormulas(priceFormulas);
     sheet.getRange(4, subtotalColumn, values.length, 1).setFormulas(subtotalFormulas);
+    if (table.key === "material_summary") {
+      const priceRange = sheet.getRange(4, priceColumn, values.length, 1);
+      priceRange.setBackground("#FFF4CC");
+      applyMaterialSummaryPriceValidation_(priceRange);
+    }
   }
 
   createReportFilter_(sheet, 3, 1, tableBlock);
   renderReportSelectors_(sheet, selectedSite, siteNames);
+  if (table.key === "material_summary") {
+    sheet.getRange(2, 1).setValue("可依照各案場修改材料單價")
+      .setFontFamily("Arial").setFontSize(11).setFontColor("#D93025")
+      .setHorizontalAlignment("left").setVerticalAlignment("middle").setWrap(false);
+  }
   applyReportSiteFilter_(sheet, table, selectedSite);
   sheet.setFrozenRows(3);
+  sheet.hideColumns(table.headers.length + 3, 2);
+}
+
+/** 單價另存於隱藏頁；同步只更新報表，不會寫入或清除這份使用者輸入。 */
+function readMaterialPriceRows_(spreadsheet) {
+  const sheet = spreadsheet.getSheetByName(GCGL_CONFIG.materialPricesSheetName);
+  if (!sheet || sheet.getLastRow() === 0) return [];
+  if (!arraysEqual_(sheet.getRange(1, 1, 1, 5).getValues()[0], GCGL_CONFIG.materialPricesHeaders)) {
+    throw new Error("案場材料單價資料格式不正確，已保留原資料，請勿刪除隱藏單價頁。");
+  }
+  const rows = sheet.getLastRow() < 2 ? [] : sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
+  const seen = {};
+  rows.forEach(function(row) {
+    if (!validMaterialPriceKey_(row[0]) || seen[row[0]] || materialPriceInputValue_(row[4]) === undefined) {
+      throw new Error("案場材料單價包含無效或重複識別，已保留原資料，請先還原隱藏單價頁。");
+    }
+    seen[row[0]] = true;
+  });
+  return rows;
+}
+
+function saveMaterialPriceEntries_(spreadsheet, entries) {
+  if (entries.length === 0) return;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    const rows = readMaterialPriceRows_(spreadsheet);
+    const indexes = {};
+    rows.forEach(function(row, index) { indexes[row[0]] = index; });
+    const changed = {};
+    entries.forEach(function(entry) {
+      if (!validMaterialPriceKey_(entry[0])) return;
+      let index = indexes[entry[0]];
+      if (index === undefined) {
+        index = rows.length;
+        indexes[entry[0]] = index;
+        rows.push([entry[0], entry[1] || "", entry[2] || "", entry[3] || "", ""]);
+        changed[index] = true;
+      }
+      if (entry.length > 4 && rows[index][4] !== entry[4]) {
+        rows[index][4] = entry[4];
+        changed[index] = true;
+      }
+    });
+    let sheet = spreadsheet.getSheetByName(GCGL_CONFIG.materialPricesSheetName);
+    if (!sheet) sheet = spreadsheet.insertSheet(GCGL_CONFIG.materialPricesSheetName);
+    protectGCGLSheet_(sheet, []);
+    ensureSheetSize_(sheet, Math.max(rows.length + 1, 2), 5);
+    if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, 5).setValues([GCGL_CONFIG.materialPricesHeaders]);
+    // 只寫有改動的連續列，避免每次輸入單價都重寫整份保存資料。
+    const indexesToWrite = Object.keys(changed).map(Number).sort(function(a, b) { return a - b; });
+    let start = 0;
+    while (start < indexesToWrite.length) {
+      let end = start + 1;
+      while (end < indexesToWrite.length && indexesToWrite[end] === indexesToWrite[end - 1] + 1) end++;
+      const first = indexesToWrite[start];
+      sheet.getRange(first + 2, 1, end - start, 5).setValues(rows.slice(first, first + end - start));
+      start = end;
+    }
+    hideInternalSheet_(spreadsheet, sheet, spreadsheet.getActiveSheet());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function validMaterialPriceKey_(value) {
+  try {
+    const parts = JSON.parse(value);
+    return Array.isArray(parts) && parts.length === 2 && parts.every(function(part) {
+      return typeof part === "string" && part !== "";
+    });
+  } catch (_) { return false; }
+}
+
+function materialNameKey_(category, item) {
+  return JSON.stringify([optionalString_(category), optionalString_(item)]);
+}
+
+function buildMaterialPriceContext_(spreadsheet, catalogTable, values, recordIds, storedRowsByKey) {
+  const idsByName = {}, aliases = {}, siteIdsByName = Object.create(null);
+  function add(target, category, item, id) {
+    if (!id) return;
+    const name = materialNameKey_(category, item);
+    if (!Object.prototype.hasOwnProperty.call(target, name)) target[name] = id;
+    else if (target[name] !== id) target[name] = ""; // 同名不同 UUID 不猜測或加總單價。
+  }
+  readMaterialPriceRows_(spreadsheet).forEach(function(row) { add(aliases, row[2], row[3], row[1]); });
+  const sheet = spreadsheet.getSheetByName(catalogTable.sheetName);
+  if (sheet && sheet.getLastRow() >= 2) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues().forEach(function(row) {
+      add(aliases, row[1], row[2], optionalString_(row[0]));
+    });
+  }
+  recordIds.forEach(function(id, index) {
+    const row = values[index] || [];
+    add(idsByName, row[0], row[1], optionalString_(id));
+  });
+  // 沒有新目錄資料（直接重建單一報表）時，使用既有 UUID 對照。
+  if (recordIds.length === 0) Object.keys(aliases).forEach(function(name) { idsByName[name] = aliases[name]; });
+  function addSite(name, id) {
+    if (!name || !id) return;
+    if (!Object.prototype.hasOwnProperty.call(siteIdsByName, name)) siteIdsByName[name] = id;
+    else if (siteIdsByName[name] !== id) siteIdsByName[name] = "";
+  }
+  const rowsByKey = storedRowsByKey || {};
+  (rowsByKey.material_summary || []).forEach(function(row) {
+    const match = optionalString_(row[1]).match(/^material-summary:([^:]+):/);
+    addSite(optionalString_(row[4]), match ? match[1] : "");
+  });
+  (rowsByKey.site_overview || []).forEach(function(row) {
+    const match = optionalString_(row[1]).match(/^site-overview:(.+)$/);
+    addSite(optionalString_(row[4]), match ? match[1] : "");
+  });
+  return {idsByName: idsByName, aliases: aliases, siteIdsByName: siteIdsByName};
+}
+
+function materialReportPriceIdentities_(table, values, storedRows, context) {
+  const siteIndex = reportSiteColumnIndex_(table.key);
+  const categoryIndex = table.key === "material_summary" ? 1 : 2;
+  return values.map(function(row, index) {
+    const category = optionalString_(row[categoryIndex]), item = optionalString_(row[categoryIndex + 1]);
+    const name = materialNameKey_(category, item);
+    const catalogId = Object.prototype.hasOwnProperty.call(context.idsByName, name)
+      ? context.idsByName[name] : context.aliases[name] || "";
+    const storedRow = storedRows[index] || [];
+    const owner = optionalString_(storedRow[1]).match(/^material-summary:([^:]+):/);
+    const metadataSiteId = optionalString_(storedRow[0]);
+    const siteId = owner ? owner[1] : (metadataSiteId && metadataSiteId !== "all" ? metadataSiteId :
+      context.siteIdsByName[optionalString_(row[siteIndex])] || "legacy-site:" + optionalString_(row[siteIndex]));
+    const itemId = catalogId || "legacy-item:" + name;
+    return {key: JSON.stringify([siteId, itemId]), catalogId: catalogId, category: category, item: item};
+  });
+}
+
+/** COUNTIFS/SUMIFS/MATCH 的條件都須逸出萬用字元，包含舊版的名稱式識別鍵。 */
+function materialPriceCriterion_(cell) {
+  return 'SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(' + cell + ',"~","~~"),"*","~*"),"?","~?")';
+}
+
+function materialReportPriceFormula_(table, row, priceSheetName, summaryTable) {
+  const key = "$" + reportColumnLetter_(table.headers.length + 3) + row;
+  const catalogId = "$" + reportColumnLetter_(table.headers.length + 4) + row;
+  const criterion = materialPriceCriterion_(key);
+  const catalog = quoteSheetNameForFormula_(priceSheetName);
+  const saved = quoteSheetNameForFormula_(GCGL_CONFIG.materialPricesSheetName);
+  const defaults = 'IF(' + catalogId + '="","",IF(COUNTIFS(' + catalog + '!$A:$A,' +
+    catalogId + ',' + catalog + '!$D:$D,"<>")=0,"",SUMIFS(' + catalog + '!$D:$D,' + catalog + '!$A:$A,' + catalogId + ')))';
+  let formula = 'IF(COUNTIFS(' + saved + '!$A:$A,' + criterion + ',' + saved + '!$E:$E,"<>")=0,' +
+    defaults + ',SUMIFS(' + saved + '!$E:$E,' + saved + '!$A:$A,' + criterion + '))';
+  if (table.key === "material_orders" && summaryTable) {
+    const summary = quoteSheetNameForFormula_(summaryTable.sheetName);
+    const summaryKeys = summary + '!$' + reportColumnLetter_(summaryTable.headers.length + 3) + ':$' +
+      reportColumnLetter_(summaryTable.headers.length + 3);
+    const summaryPrices = summary + '!$' + reportColumnLetter_(summaryTable.headers.length + 1) + ':$' +
+      reportColumnLetter_(summaryTable.headers.length + 1);
+    const lookup = 'INDEX(' + summaryPrices + ',MATCH(' + criterion + ',' + summaryKeys + ',0))';
+    formula = 'IF(COUNTIFS(' + summaryKeys + ',' + criterion + ')=0,' + formula +
+      ',IF(COUNTIFS(' + summaryKeys + ',' + criterion + ',' + summaryPrices + ',"<>")=0,"",' + lookup + '))';
+  }
+  return "=" + formula;
+}
+
+function materialSummaryInputLayout_(sheet, table) {
+  const priceColumn = table.headers.length + 1, keyColumn = priceColumn + 2;
+  if (sheet.getLastRow() < 4 || sheet.getMaxColumns() < keyColumn + 1 ||
+      sheet.getRange(3, keyColumn).getValue() !== GCGL_CONFIG.materialPriceKeyHeader ||
+      sheet.getRange(3, keyColumn + 1).getValue() !== GCGL_CONFIG.materialCatalogIdHeader) return null;
+  return {priceColumn: priceColumn, keyColumn: keyColumn};
+}
+
+function materialPriceInputValue_(value) {
+  if (value === "" || value == null) return "";
+  if (typeof value !== "number" && typeof value !== "string") return undefined;
+  if (typeof value === "string" && value.trim() === "") return "";
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : undefined;
+}
+
+/** 清空及公式回傳空字串代表使用共用單價，不能被硬性數字規則拒絕。 */
+function applyMaterialSummaryPriceValidation_(range) {
+  const cell = reportColumnLetter_(range.getColumn()) + range.getRow();
+  range.setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireFormulaSatisfied('=OR(' + cell + '="",AND(ISNUMBER(' + cell + '),' + cell + '>=0))')
+    .setAllowInvalid(false).build());
+}
+
+function captureMaterialSummaryPrices_(spreadsheet, tables) {
+  const table = tables.find(function(item) { return item.key === "material_summary"; });
+  const sheet = table && spreadsheet.getSheetByName(table.sheetName);
+  const layout = sheet && materialSummaryInputLayout_(sheet, table);
+  if (!layout) return;
+  const rowCount = sheet.getLastRow() - 3;
+  const values = sheet.getRange(4, 1, rowCount, layout.keyColumn + 1).getValues();
+  const formulas = sheet.getRange(4, layout.priceColumn, rowCount, 1).getFormulas();
+  const entries = [];
+  values.forEach(function(row, index) {
+    const key = row[layout.keyColumn - 1], price = materialPriceInputValue_(row[layout.priceColumn - 1]);
+    if (!validMaterialPriceKey_(key) || formulas[index][0] !== "" || price === undefined) return;
+    entries.push([key, row[layout.keyColumn], row[1], row[2], price]);
+  });
+  saveMaterialPriceEntries_(spreadsheet, entries);
+}
+
+function handleMaterialSummaryPriceEdit_(event) {
+  const range = event.range, sheet = range.getSheet(), spreadsheet = sheet.getParent();
+  const tables = loadTableSchemas_();
+  const table = tables.find(function(item) { return item.key === "material_summary" && item.sheetName === sheet.getName(); });
+  const catalog = tables.find(function(item) { return item.key === "material_catalog"; });
+  if (!table || !catalog) return false;
+  const layout = materialSummaryInputLayout_(sheet, table);
+  if (!layout || range.getColumn() > layout.priceColumn ||
+      range.getColumn() + range.getNumColumns() <= layout.priceColumn) return false;
+  const startRow = Math.max(range.getRow(), 4);
+  const endRow = Math.min(range.getRow() + range.getNumRows() - 1, sheet.getLastRow());
+  if (endRow < startRow) return false;
+  const rows = sheet.getRange(startRow, 1, endRow - startRow + 1, layout.keyColumn + 1).getValues();
+  const existingFormulas = sheet.getRange(startRow, layout.priceColumn, rows.length, 1).getFormulas();
+  const entries = [], formulas = [];
+  rows.forEach(function(row, index) {
+    const key = row[layout.keyColumn - 1], price = materialPriceInputValue_(row[layout.priceColumn - 1]);
+    formulas.push([materialReportPriceFormula_(table, startRow + index, catalog.sheetName, null)]);
+    if (validMaterialPriceKey_(key) && price !== undefined && existingFormulas[index][0] === "") {
+      entries.push([key, row[layout.keyColumn], row[1], row[2], price]);
+    }
+  });
+  saveMaterialPriceEntries_(spreadsheet, entries);
+  // 回復可計算的公式：之後共用單價更新、清空覆寫及其他訂單都能即時跟隨。
+  const priceRange = sheet.getRange(startRow, layout.priceColumn, rows.length, 1);
+  priceRange.clearDataValidations().setFormulas(formulas);
+  applyMaterialSummaryPriceValidation_(priceRange);
+  return true;
 }
 
 function quoteSheetNameForFormula_(sheetName) {
@@ -1936,7 +2233,12 @@ function reportColumnLetter_(columnNumber) {
 }
 
 function renderFlatReport_(spreadsheet, table, values, siteNames) {
-  const sheet = prepareReportSheet_(spreadsheet, table.sheetName);
+  const sheetName = reportSheetName_(table);
+  if (table.key === "work_logs") {
+    migrateReadableReportSheet_(spreadsheet, sheetName, [table.sheetName,
+      GCGL_CONFIG.defaultSheetNames.work_logs, GCGL_CONFIG.previousWorkLogReportSheetName]);
+  }
+  const sheet = prepareReportSheet_(spreadsheet, sheetName);
   // 未完成內容只供總覽計算，不出現在使用者閱讀的備忘錄表格。
   const pendingContentIndex = table.headers.indexOf("__pending_memo_content");
   const visibleTable = pendingContentIndex >= 0
@@ -1968,6 +2270,114 @@ function renderFlatReport_(spreadsheet, table, values, siteNames) {
   renderReportSelectors_(sheet, selectedSite, siteNames);
   applyReportSiteFilter_(sheet, table, selectedSite);
   sheet.setFrozenRows(3);
+}
+
+/** 同步仍保留兩種計價資料的 key／欄位，僅合併可見報表，不需更新 App。 */
+function reportSheetName_(table) {
+  if (["pricing_progress", "pricing_detail"].indexOf(table.key) !== -1) {
+    return GCGL_CONFIG.pricingStatisticsSheetName;
+  }
+  if (table.key === "work_logs") return GCGL_CONFIG.workLogReportSheetName;
+  return table.sheetName;
+}
+
+/** 能沿用原分頁就改名，保留分頁識別碼；不在新報表完成前刪除舊報表。 */
+function migrateReadableReportSheet_(spreadsheet, destinationName, previousNames) {
+  if (spreadsheet.getSheetByName(destinationName)) return;
+  for (let index = 0; index < previousNames.length; index += 1) {
+    const previousName = previousNames[index];
+    if (!previousName || previousName === destinationName) continue;
+    const sheet = spreadsheet.getSheetByName(previousName);
+    if (sheet) {
+      sheet.setName(destinationName);
+      return;
+    }
+  }
+}
+
+/** 只有替代報表成功建立後才移除舊的可見分頁；隱藏原始資料不變。 */
+function removeReplacedReportSheets_(spreadsheet, tables) {
+  const currentNames = tables.map(reportSheetName_);
+  tables.filter(function(table) {
+    return ["pricing_progress", "pricing_detail", "work_logs"].indexOf(table.key) !== -1;
+  }).forEach(function(table) {
+    if (!spreadsheet.getSheetByName(reportSheetName_(table))) return;
+    const previousNames = [table.sheetName, GCGL_CONFIG.defaultSheetNames[table.key]];
+    if (table.key === "work_logs") previousNames.push(GCGL_CONFIG.previousWorkLogReportSheetName);
+    uniqueStrings_(previousNames).forEach(function(name) {
+      if (currentNames.indexOf(name) !== -1) return;
+      const oldSheet = spreadsheet.getSheetByName(name);
+      if (oldSheet && spreadsheet.getSheets().length > 1) spreadsheet.deleteSheet(oldSheet);
+    });
+  });
+}
+
+/** 進度在上、明細在下；兩表的數值／格式保持原樣，共用 A1 案場選擇。 */
+function renderPricingStatisticsReport_(spreadsheet, tables, valuesByKey, siteNames) {
+  const sheetName = GCGL_CONFIG.pricingStatisticsSheetName;
+  migrateReadableReportSheet_(spreadsheet, sheetName,
+    tables.map(function(table) { return table.sheetName; }).concat([
+      GCGL_CONFIG.defaultSheetNames.pricing_progress, GCGL_CONFIG.defaultSheetNames.pricing_detail
+    ]));
+  const sheet = prepareReportSheet_(spreadsheet, sheetName);
+  sheet.showRows(1, sheet.getMaxRows());
+  const ordered = ["pricing_progress", "pricing_detail"].map(function(key) {
+    return tables.find(function(table) { return table.key === key; });
+  }).filter(function(table) { return Boolean(table); });
+  const widths = [];
+  ordered.forEach(function(table) {
+    table.headers.forEach(function(_, index) {
+      widths[index] = Math.max(widths[index] || 0, Number((table.widths || [])[index]) || 110);
+    });
+  });
+  let titleRow = 2;
+  const sections = [];
+  ordered.forEach(function(table) {
+    const values = valuesByKey[table.key] || [];
+    const bodyRows = values.length > 0 ? values : [table.headers.map(function() { return ""; })];
+    const headerRow = titleRow + 1;
+    const block = writeReportTableBlock_(sheet, headerRow, 1, table.headers,
+      bodyRows, widths, table.formats || []);
+    sheet.getRange(titleRow, 1).setValue(table.key === "pricing_progress" ? "計價進度" : "計價明細")
+      .setFontFamily("Arial").setFontSize(12).setFontWeight("bold")
+      .setFontColor(GCGL_REPORT_COLORS.text);
+    sheet.setRowHeight(titleRow, 28);
+    sections.push({ startRow: headerRow + 1, rowCount: bodyRows.length,
+      siteColumn: reportSiteColumnIndex_(table.key) + 1 });
+    titleRow = block.endRow + 2;
+  });
+  PropertiesService.getScriptProperties().setProperty(GCGL_CONFIG.pricingReportLayoutProperty,
+    JSON.stringify({ sheetId: sheet.getSheetId(), sections: sections }));
+  const selectionKey = ordered[0].key;
+  const selectedSite = selectedSiteForReport_(selectionKey, siteNames);
+  renderReportSelectors_(sheet, selectedSite, siteNames);
+  applyPricingReportSiteFilter_(sheet, selectedSite);
+  sheet.setFrozenRows(3);
+}
+
+/** 兩表不可共用單一原生 Filter；以列顯示／隱藏保留兩組表頭和標題。 */
+function applyPricingReportSiteFilter_(sheet, selectedSite) {
+  const raw = PropertiesService.getScriptProperties().getProperty(GCGL_CONFIG.pricingReportLayoutProperty);
+  let layout;
+  try { layout = JSON.parse(raw || "null"); } catch (_) { return; }
+  if (!layout || layout.sheetId !== sheet.getSheetId() || !Array.isArray(layout.sections)) return;
+  layout.sections.forEach(function(section) {
+    if (!(section.startRow > 0 && section.rowCount > 0 && section.siteColumn > 0) ||
+        section.startRow + section.rowCount - 1 > sheet.getMaxRows()) return;
+    sheet.showRows(section.startRow, section.rowCount);
+    if (!selectedSite || selectedSite === GCGL_CONFIG.allSitesLabel) return;
+    const names = sheet.getRange(section.startRow, section.siteColumn, section.rowCount, 1).getValues();
+    let hiddenStart = -1;
+    for (let index = 0; index <= names.length; index += 1) {
+      const name = index < names.length ? optionalString_(names[index][0]) : "";
+      const shouldHide = name !== "" && name !== selectedSite;
+      if (shouldHide && hiddenStart === -1) hiddenStart = index;
+      if (!shouldHide && hiddenStart !== -1) {
+        sheet.hideRows(section.startRow + hiddenStart, index - hiddenStart);
+        hiddenStart = -1;
+      }
+    }
+  });
 }
 
 function reportTableWithoutColumn_(table, removedIndex) {
@@ -2105,7 +2515,7 @@ function writeReportTableBlock_(sheet, startRow, startColumn, headers, rows, wid
 function configureGCGLReportWarnings() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet() || configuredSpreadsheet_();
   applyGCGLReportProtection_(spreadsheet);
-  console.log("已設定編輯警告；僅材料單價表的單價輸入格不警告。" +
+  console.log("已設定編輯警告；案場下拉選單、材料單價表及材料統計的單價輸入格不警告。" +
     "包含擁有者在內的編輯者均可確認警告後繼續修改，這不是禁止編輯。");
 }
 
@@ -2114,16 +2524,45 @@ function lockGCGLReportSheets() {
   return configureGCGLReportWarnings();
 }
 
-/** 工作表整頁編輯警告，包含空白格與隱藏資料；有效材料列的 D 欄不警告。 */
+/** 整頁編輯警告；案場篩選、共用單價及有效材料統計列的單價除外。 */
 function applyGCGLReportProtection_(spreadsheet) {
-  const catalog = loadTableSchemas_().find(function(table) {
+  const tables = loadTableSchemas_();
+  const catalog = tables.find(function(table) {
     return table.key === "material_catalog";
   });
   const catalogName = catalog ? catalog.sheetName :
     loadManagedTables_().material_catalog || GCGL_CONFIG.defaultSheetNames.material_catalog;
+  const selectorSheetNames = tables.filter(function(table) {
+    return supportsReportSiteSelector_(table.key);
+  }).map(reportSheetName_);
   spreadsheet.getSheets().forEach(function(sheet) {
-    protectGCGLSheet_(sheet, materialPriceInputRanges_(sheet, catalogName));
+    const inputRanges = materialPriceInputRanges_(sheet, catalogName);
+    if (selectorSheetNames.indexOf(sheet.getName()) !== -1) {
+      inputRanges.push(sheet.getRange(1, 1));
+    }
+    const summary = tables.find(function(table) {
+      return table.key === "material_summary" && table.sheetName === sheet.getName();
+    });
+    if (summary) Array.prototype.push.apply(inputRanges, materialSummaryPriceInputRanges_(sheet, summary));
+    protectGCGLSheet_(sheet, inputRanges);
   });
+}
+
+function materialSummaryPriceInputRanges_(sheet, table) {
+  const layout = materialSummaryInputLayout_(sheet, table);
+  if (!layout) return [];
+  const keys = sheet.getRange(4, layout.keyColumn, sheet.getLastRow() - 3, 1).getValues();
+  const ranges = [];
+  let start = -1;
+  for (let index = 0; index <= keys.length; index++) {
+    const hasItem = index < keys.length && validMaterialPriceKey_(keys[index][0]);
+    if (hasItem && start === -1) start = index;
+    if (!hasItem && start !== -1) {
+      ranges.push(sheet.getRange(start + 4, layout.priceColumn, index - start, 1));
+      start = -1;
+    }
+  }
+  return ranges;
 }
 
 function materialPriceInputRanges_(sheet, catalogName) {
@@ -2430,6 +2869,7 @@ function isGCGLInternalSheet_(sheet) {
   const name = sheet.getName();
   return name === GCGL_CONFIG.syncLogSheetName ||
     name === GCGL_CONFIG.rawDataSheetName ||
+    name === GCGL_CONFIG.materialPricesSheetName ||
     name === "案場儀表板" ||
     name === "__GCGL_DASHBOARD_DATA" ||
     GCGL_CONFIG.expectedTableKeys.some(function(key) { return name === legacyRawSheetName_(key); });
@@ -2574,7 +3014,7 @@ function sanitizeSheetName_(value) {
     .replace(/[\\/?*\[\]:]/g, "_")
     .slice(0, 100);
   if (!name) throw new Error("工作表名稱不可為空。");
-  if (name === GCGL_CONFIG.syncLogSheetName) {
+  if (name === GCGL_CONFIG.syncLogSheetName || name === GCGL_CONFIG.materialPricesSheetName) {
     throw new Error("工作表名稱不可使用系統保留名稱。");
   }
   if (name.indexOf(GCGL_CONFIG.rawSheetPrefix) === 0) {
