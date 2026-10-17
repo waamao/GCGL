@@ -1,4 +1,4 @@
-// Version: 2.3
+// Version: 2.5
 
 const GCGL_CONFIG = Object.freeze({
   schemaVersion: 1,
@@ -2231,7 +2231,8 @@ function renderAttendanceReport_(spreadsheet, table, values, recordIds) {
   mergeAttendanceOvertimeCells_(sheet, values, recordIds || []);
   mergeAttendanceNotesCells_(sheet, values, recordIds || []);
   mergeAttendanceNotesCells_(sheet, values, recordIds || [], 6);
-  sheet.setColumnWidths(5, 2, 300);
+  sheet.setColumnWidth(5, 180);
+  sheet.setColumnWidth(6, 300);
   sheet.getRange(2, 4, bodyRows.length, 1).setHorizontalAlignment("center");
   // 日期／加班欄合併完成後再畫框線，避免合併動作留下不完整的表格邊框。
   const tableRange = sheet.getRange(1, 1, bodyRows.length + 1, table.headers.length);
@@ -2585,10 +2586,10 @@ function workerDirectorySheet_(spreadsheet) {
   return id ? spreadsheet.getSheets().find(function(sheet) { return String(sheet.getSheetId()) === id; }) || null : null;
 }
 
-/** 同時辨識舊版第 1 列與新版第 4 列，移轉時先保存原輸入。 */
+/** 辨識目前第 3 列及舊版第 4／1 列，移轉時先保存原輸入。 */
 function workerDirectoryLayout_(sheet) {
   if (!isWorkerDirectorySheet_(sheet)) return null;
-  const headerRow = [4, 1].find(function(row) {
+  const headerRow = [3, 4, 1].find(function(row) {
     return sheet.getMaxRows() >= row &&
       sheet.getRange(row, 9).getValue() === GCGL_CONFIG.workerDirectoryKeyHeader;
   });
@@ -2727,23 +2728,23 @@ function renderWorkerDirectoryReport_(spreadsheet, table, values, recordIds, tab
   const headers = ["廠商名稱", "姓名", "電話", "身分證號", "地址", "職安卡到期日", "體檢到期日", "勞保到期日",
     GCGL_CONFIG.workerDirectoryKeyHeader];
   const rows = output.length ? output : [headers.map(function() { return ""; })];
-  const headerRow = 4, firstDataRow = 5;
+  const headerRow = 3, firstDataRow = 4;
   ensureSheetSize_(sheet, rows.length + headerRow, 9);
   sheet.getRange(headerRow, 1, rows.length + 1, 9).setNumberFormat("@");
   const block = writeReportTableBlock_(sheet, headerRow, 1, headers, rows,
-    [180, 99, 150, 150, 300, 120, 120, 120, 100], ["@", "@", "@", "@", "@", "yyyy/MM/dd", "yyyy/MM/dd", "yyyy/MM/dd", "@"]);
+    [180, 99, 99, 99, 300, 180, 180, 180, 100], ["@", "@", "@", "@", "@", "yyyy/MM/dd", "yyyy/MM/dd", "yyyy/MM/dd", "@"]);
   if (output.length) {
     sheet.getRange(firstDataRow, 4, output.length, 2).setBackground(GCGL_REPORT_COLORS.rememberedInput);
-    const missing = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=F5="未提供"')
+    const missing = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=F4="未提供"')
       .setFontColor("#D93025").setRanges([sheet.getRange(firstDataRow, 6, output.length, 3)]).build();
-    const expired = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied("=AND(ISNUMBER(F5),F5<=TODAY())")
+    const expired = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied("=AND(ISNUMBER(F4),F4<=TODAY())")
       .setBackground(GCGL_REPORT_COLORS.lightRed3).setRanges([sheet.getRange(firstDataRow, 6, output.length, 3)]).build();
     sheet.setConditionalFormatRules([missing, expired]);
   }
   sheet.getRange(2, 4, 1, 2).setValues([["請填入資料", "請填入資料"]])
     .setFontFamily("Arial").setFontSize(10).setFontColor(GCGL_REPORT_COLORS.red)
     .setHorizontalAlignment("left").setWrap(true);
-  sheet.setRowHeights(1, 3, 21);
+  sheet.setRowHeights(1, 2, 21);
   sheet.setRowHeight(2, 28);
   createReportFilter_(sheet, headerRow, 1, block); // 隱藏的 UUID 也隨原生排序移動。
   sheet.setFrozenRows(headerRow);
@@ -2871,7 +2872,7 @@ function renderWorkerAttendanceReport_(spreadsheet, table, values, recordIds) {
     rows.push(["當月工資"].concat(model.columns.map(function() { return ""; })));
     writeReportTableBlock_(sheet, wageRow, 1,
       ["工資\n（日薪／時薪）"].concat(model.columns.map(function(column) { return column.rate; })), rows,
-      [120].concat(model.columns.map(function() { return 99; })), ["@"].concat(model.columns.map(function() { return "0.##"; })));
+      [180].concat(model.columns.map(function() { return 99; })), ["@"].concat(model.columns.map(function() { return "0.##"; })));
     sheet.getRange(nameRow, 1, 1, headers.length).setBackground(GCGL_REPORT_COLORS.navy)
       .setFontColor(GCGL_REPORT_COLORS.headerText).setFontWeight("bold")
       .setHorizontalAlignment("center").setWrap(true);
@@ -2920,7 +2921,7 @@ function renderWorkerAttendanceReport_(spreadsheet, table, values, recordIds) {
     sheet.getRange(1, 4).setFormula('="有"&SUM(' + missingWorkerCounts.join(',') + ')&"位人員未填入工資"')
       .setFontColor(GCGL_REPORT_COLORS.red).setWrap(false);
     sheet.setRowHeight(1, 48);
-    sheet.setColumnWidth(1, 120);
+    sheet.setColumnWidth(1, 180);
     sheet.setColumnWidths(2, model.columns.length, 99);
     sheet.getRange(1, 1, 1, 5).setFontFamily("Arial").setVerticalAlignment("middle");
     sheet.getRange(1, 1, 1, 3).setBackground(GCGL_REPORT_COLORS.titleFill);
@@ -3080,7 +3081,7 @@ function showWorkerMonthExport_(format) {
 function materialCatalogLayout_(sheet) {
   if (!sheet || sheet.getMaxColumns() < 4) return null;
   const headers = ["品項識別碼", "分類", "品項名稱", "單價"];
-  const headerRow = [4, 1].find(function(row) {
+  const headerRow = [3, 4, 1].find(function(row) {
     return sheet.getMaxRows() >= row && arraysEqual_(sheet.getRange(row, 1, 1, 4).getValues()[0], headers);
   });
   return headerRow ? {headerRow: headerRow, firstDataRow: headerRow + 1} : null;
@@ -3102,9 +3103,13 @@ function renderMaterialCatalogReport_(spreadsheet, table, values, recordIds) {
   }
   const outputRows = mergeMaterialCatalogRows_(values, recordIds, existingRows);
 
-  // 原生插入列保留舊單價；即使後續寫入失敗，原 UUID／單價仍整列下移，不先覆寫它們。
-  if (oldLayout && oldLayout.headerRow === 1) sheet.insertRowsBefore(1, 3);
-  const headerRow = 4, firstDataRow = 5;
+  // 用原生增刪前置列搬移整張表；後續寫入失敗時，原 UUID／單價仍保留在資料列。
+  const headerRow = 3, firstDataRow = 4;
+  if (oldLayout && oldLayout.headerRow < headerRow) {
+    sheet.insertRowsBefore(1, headerRow - oldLayout.headerRow);
+  } else if (oldLayout && oldLayout.headerRow > headerRow) {
+    sheet.deleteRows(headerRow, oldLayout.headerRow - headerRow);
+  }
 
   const managedColumnCount = 4;
   const rowsToClear = Math.max(oldDataRowCount, outputRows.length);
@@ -3173,7 +3178,7 @@ function renderMaterialCatalogReport_(spreadsheet, table, values, recordIds) {
     sheet.getRange(outputRows.length + firstDataRow, 1, oldDataRowCount - outputRows.length, managedColumnCount).clearContent();
   }
 
-  sheet.getRange(1, 1, 3, managedColumnCount).clearContent();
+  sheet.getRange(1, 1, 2, managedColumnCount).clearContent();
   sheet.getRange(2, 4).setValue("請填入單價")
     .setFontFamily("Arial").setFontSize(10).setFontColor(GCGL_REPORT_COLORS.red)
     .setHorizontalAlignment("left").setWrap(true);
@@ -3182,7 +3187,7 @@ function renderMaterialCatalogReport_(spreadsheet, table, values, recordIds) {
   sheet.setColumnWidth(2, 150);
   sheet.setColumnWidth(3, 260);
   sheet.setColumnWidth(4, 99);
-  sheet.setRowHeights(1, 3, 21);
+  sheet.setRowHeights(1, 2, 21);
   sheet.setRowHeight(2, 28);
   sheet.setRowHeight(headerRow, 30);
   sheet.setFrozenRows(headerRow);
@@ -3716,6 +3721,12 @@ function renderFlatReport_(spreadsheet, table, values, siteNames, recordIds) {
     reportTable.widths || [],
     reportTable.formats || []
   );
+  if (table.key === "work_logs") {
+    // 工程記錄的案場、機具使用及備註；不改其他報表同名欄位的寬度。
+    [2, 8, 9].forEach(function(column) {
+      if (column <= reportTable.headers.length) sheet.setColumnWidth(column, 180);
+    });
+  }
   if (usesMergedRecordLayout_(table)) {
     mergeReportRecordCells_(sheet, table, reportValues, selectedRows.recordIds, 4);
   } else {
@@ -3876,19 +3887,19 @@ function createReportFilter_(sheet, startRow, startColumn, tableBlock) {
 /** 僅覆寫指定欄位，保留其他欄寬；名稱包含各 App 語言實際同步的表頭。 */
 function requestedReportColumnWidth_(header) {
   const label = optionalString_(header).trim().toLowerCase();
-  const narrowTextHeaders = ["樓層/區域", "樓層／區域", "樓層", "施工廠商",
-    "楼层/区域", "楼层／区域", "楼层", "施工单位", "floor / area", "floor", "contractor",
-    "階／エリア", "施工業者", "층/구역", "시공업체"];
+  const narrowTextHeaders = ["樓層/區域", "樓層／區域", "樓層",
+    "楼层/区域", "楼层／区域", "楼层", "floor / area", "floor", "階／エリア", "층/구역"];
   if (narrowTextHeaders.indexOf(label) !== -1) return 99;
+  if (["施工廠商", "施工单位", "contractor", "施工業者", "시공업체"].indexOf(label) !== -1) return 180;
   if (["工項", "施工項目", "施工项", "work item", "공종"].indexOf(label) !== -1) return 180;
   const dateHeaders = [
-    "日期", "最後計價日", "最後記錄日", "最後訂購日", "到貨日期",
+    "日期", "最後計價日", "最後記錄日", "最後訂購日", "到貨日期", "職安卡到期日", "體檢到期日", "勞保到期日",
     "最后计价日期", "最后记录日期", "最后订购日期", "到货日期",
     "date", "last billing date", "last record date", "last order date", "date received",
     "日付", "最終出来高日", "最終記録日", "最終発注日", "納品日",
     "날짜", "최종 기성일", "최종 기록일", "최종 주문일", "입고일"
   ];
-  if (dateHeaders.indexOf(label) !== -1) return 120;
+  if (dateHeaders.indexOf(label) !== -1) return 180;
   const compactHeaders = [
     "層級", "類型", "總價", "已計價", "計價進度", "單位", "數量", "單價", "金額",
     "稅率", "含稅", "目前進度", "狀態", "進度", "施工進度", "人數", "加班時數",
