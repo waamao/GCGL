@@ -1,4 +1,4 @@
-// Version: 2.5
+// Version: 3.2
 
 const GCGL_CONFIG = Object.freeze({
   schemaVersion: 1,
@@ -7,6 +7,7 @@ const GCGL_CONFIG = Object.freeze({
   managedTablesProperty: "GCGL_MANAGED_TABLES",
   tableSchemasProperty: "GCGL_TABLE_SCHEMAS",
   reportSelectionPropertyPrefix: "GCGL_REPORT_SITE_SELECTION_",
+  reportLanguageProperty: "GCGL_REPORT_LANGUAGE",
   legacyPricingReportLayoutProperty: "GCGL_PRICING_REPORT_LAYOUT",
   pricingStatisticsSheetName: "計價統計",
   workLogReportSheetName: "工程記錄",
@@ -36,6 +37,8 @@ const GCGL_CONFIG = Object.freeze({
   materialCatalogIdHeader: "__material_catalog_id",
   attendanceWorkersHeader: "__attendance_workers_json",
   workDateKeyHeader: "__work_date_key",
+  memoRecordKeyHeader: "__memo_record_key",
+  memoSourceSignatureHeader: "__memo_source_signature",
   workerAttendanceSheetName: "施工人員",
   workerMonthSheetPrefix: "出工",
   workerMonthSheetsPropertyPrefix: "GCGL_WORKER_MONTH_SHEETS_",
@@ -116,8 +119,268 @@ const GCGL_REPORT_COLORS = Object.freeze({
   text: "#263238"
 });
 
+// 分頁名稱、同步欄位及 UUID 維持原值；僅翻譯明確標記的報表標題與系統狀態。
+const GCGL_REPORT_LANGUAGES = Object.freeze({"繁體中文": "zh-Hant", "簡體中文": "zh-Hans", "日文": "ja", "英文": "en", "韓文": "ko"});
+const GCGL_REPORT_TRANSLATIONS = Object.freeze({
+  "案場總覽": ["案场总览", "現場概要", "Project Overview", "현장 개요"],
+  "案場": ["案场", "現場", "Site", "현장"],
+  "追加總價": ["追加总价", "追加総額", "Change Order Total", "추가 총액"],
+  "契約總額": ["合同总额", "契約総額", "Contract Total", "계약 총액"],
+  "工程記錄筆數": ["工程记录数", "工事記録件数", "Work Log Entries", "공사 기록 수"],
+  "出勤天數": ["出勤天数", "出勤日数", "Attendance Days", "출근 일수"],
+  "日期": ["日期", "日付", "Date", "날짜"],
+  "月份": ["月份", "月", "Month", "월"],
+  "月份進度": ["月份进度", "月別進捗", "Monthly Progress", "월별 진행률"],
+  "今日工程記錄": ["今日工程记录", "本日の工事記録", "Today's Site Log", "오늘의 공사 기록"],
+  "工程記錄": ["工程记录", "工事記録", "Site Log", "공사 기록"],
+  "備忘錄": ["备忘录", "メモ", "Memos", "메모"],
+  "出勤": ["出勤", "出勤", "Attendance", "출근"],
+  "施工人員": ["施工人员", "作業員", "Site Worker", "시공 작업자"],
+  "材料訂購": ["材料订购", "資材発注", "Material Orders", "자재 주문"],
+  "未完成項目": ["未完成项目", "未完了項目", "Pending Items", "미완료 항목"],
+  "無未完成項目": ["无未完成项目", "未完了項目はありません", "No pending items", "미완료 항목 없음"],
+  "人員文件到期": ["人员文件到期", "作業員書類の有効期限", "Expired Worker Documents", "작업자 서류 만료"],
+  "承攬總價": ["承揽总价", "請負金額", "Contract Value", "도급 금액"],
+  "追加金額": ["追加金额", "追加金額", "Change Orders", "추가 공사 금액"],
+  "合計總價": ["合计总价", "契約総額", "Total Contract Value", "총 계약 금액"],
+  "已計價": ["已计价", "出来高累計", "Billed", "기성 누계"],
+  "計價進度": ["计价进度", "出来高進捗", "Billing Progress", "기성 진행률"],
+  "施工進度": ["施工进度", "施工進捗", "Construction Progress", "공사 진행률"],
+  "工程進度": ["工程进度", "工事進捗", "Work Progress", "공정 진행률"],
+  "總出工數": ["总出工数", "延べ人工", "Total Worker-Days", "총 출역 공수"],
+  "材料成本": ["材料成本", "資材費", "Material Cost", "자재비"],
+  "未填單價品項": ["未填单价品项", "単価未入力の資材", "Unpriced Items", "단가 미입력 품목"],
+  "累計出工數": ["累计出工数", "累計人工", "Total Worker-Days", "누적 출역 공수"],
+  "尚無月份進度資料": ["暂无月份进度数据", "月別進捗データはありません", "No monthly progress data", "월별 진행률 데이터 없음"],
+  "尚未建立單價表": ["尚未建立单价表", "単価表が未作成です", "The price list has not been created", "단가표가 아직 생성되지 않았습니다"],
+  "同步資料時間": ["同步数据时间", "最終同期", "Last Data Sync", "최종 데이터 동기화"],
+  "尚無記錄": ["暂无记录", "記録なし", "No records yet", "기록 없음"],
+  "星期日": ["星期日", "日曜日", "Sunday", "일요일"],
+  "星期一": ["星期一", "月曜日", "Monday", "월요일"],
+  "星期二": ["星期二", "火曜日", "Tuesday", "화요일"],
+  "星期三": ["星期三", "水曜日", "Wednesday", "수요일"],
+  "星期四": ["星期四", "木曜日", "Thursday", "목요일"],
+  "星期五": ["星期五", "金曜日", "Friday", "금요일"],
+  "星期六": ["星期六", "土曜日", "Saturday", "토요일"],
+  "施工廠商": ["施工单位", "施工業者", "Contractor", "시공업체"],
+  "工項": ["施工项", "工種", "Work Item", "공종"],
+  "施工項目": ["施工项目", "施工項目", "Work Item", "시공 항목"],
+  "樓層/區域": ["楼层/区域", "階／エリア", "Floor / Area", "층/구역"],
+  "樓層": ["楼层", "階", "Floor", "층"],
+  "人數": ["人数", "人数", "Crew Size", "인원"],
+  "機具": ["机具", "機械・機材", "Equipment", "장비"],
+  "機具使用": ["机具使用", "使用機械・機材", "Equipment Used", "사용 장비"],
+  "備註": ["备注", "備考", "Notes", "비고"],
+  "內容": ["内容", "内容", "Content", "내용"],
+  "備忘錄內容": ["备忘录内容", "メモ内容", "Memo Content", "메모 내용"],
+  "公司": ["公司", "会社", "Company", "회사"],
+  "無案場出勤": ["无案场出勤", "現場未指定の出勤", "No Site Assigned", "현장 미지정 출근"],
+  "加班": ["加班", "残業", "Overtime", "연장 근무"],
+  "加班時數": ["加班时数", "残業時間", "Overtime Hours", "연장 근무 시간"],
+  "小時": ["小时", "時間", "hours", "시간"],
+  "天": ["天", "日", "days", "일"],
+  "人": ["人", "人", "people", "명"],
+  "未指定": ["未指定", "未指定", "Unassigned", "미지정"],
+  "未指定廠商": ["未指定厂商", "業者未指定", "Unassigned Contractor", "업체 미지정"],
+  "未填": ["未填", "未入力", "Not Entered", "미입력"],
+  "未填施工項目": ["未填写施工项目", "工種未入力", "Work Item Not Entered", "공종 미입력"],
+  "未填品項": ["未填写品项", "品目未入力", "Item Not Entered", "품목 미입력"],
+  "（無內容）": ["（无内容）", "（内容なし）", "(No content)", "(내용 없음)"],
+  "今日尚無工程記錄、備忘錄或材料訂購": ["今日尚无工程记录、备忘录或材料订购", "本日の工事記録・メモ・資材発注はありません", "No site logs, memos, or material orders today", "오늘의 공사 기록, 메모 또는 자재 주문 없음"],
+  "層級": ["层级", "区分", "Level", "구분"],
+  "名稱": ["名称", "名称", "Name", "이름"],
+  "類型": ["类型", "タイプ", "Type", "유형"],
+  "本工程": ["本工程", "本工事", "Base Contract", "본 공사"],
+  "追加工程": ["追加工程", "追加工事", "Change Order", "추가 공사"],
+  "計價表": ["计价表", "出来高表", "Payment Schedule", "기성 내역서"],
+  "總價": ["总价", "総額", "Total", "총액"],
+  "進度": ["进度", "進捗", "Progress", "진행률"],
+  "目前進度": ["目前进度", "現在の進捗", "Current Progress", "현재 진행률"],
+  "狀態": ["状态", "状態", "Status", "상태"],
+  "最後計價日": ["最后计价日期", "最終出来高日", "Last Billing Date", "최종 기성일"],
+  "最後記錄日": ["最后记录日期", "最終記録日", "Last Record Date", "최종 기록일"],
+  "最後訂購日": ["最后订购日期", "最終発注日", "Last Order Date", "최종 주문일"],
+  "品項": ["品项", "品目", "Item", "품목"],
+  "品項名稱": ["品项名称", "品目名", "Item Name", "품목명"],
+  "品項識別碼": ["品项识别码", "品目ID", "Item ID", "품목 ID"],
+  "分類": ["分类", "分類", "Category", "분류"],
+  "單位": ["单位", "単位", "Unit", "단위"],
+  "數量": ["数量", "数量", "Quantity", "수량"],
+  "單價": ["单价", "単価", "Unit Price", "단가"],
+  "金額": ["金额", "金額", "Amount", "금액"],
+  "稅率": ["税率", "税率", "Tax Rate", "세율"],
+  "含稅": ["含税", "税込", "Tax Included", "세금 포함"],
+  "本次計價總額": ["本次计价总额", "今回出来高総額", "Current Billing Total", "이번 기성 총액"],
+  "訂購數量": ["订购数量", "発注数量", "Order Quantity", "주문 수량"],
+  "已送貨數量": ["已送货数量", "納品済み数量", "Delivered Quantity", "배송 완료 수량"],
+  "未送貨數量": ["未送货数量", "未納品数量", "Undelivered Quantity", "미배송 수량"],
+  "小計": ["小计", "小計", "Subtotal", "소계"],
+  "送貨狀態": ["送货状态", "配送状況", "Delivery Status", "배송 상태"],
+  "到貨日期": ["到货日期", "納品日", "Date Received", "입고일"],
+  "廠商名稱": ["厂商名称", "業者名", "Contractor Name", "업체명"],
+  "姓名": ["姓名", "氏名", "Worker Name", "성명"],
+  "電話": ["电话", "電話番号", "Phone", "전화번호"],
+  "身分證號": ["身份证号", "身分証番号", "ID Number", "신분증 번호"],
+  "地址": ["地址", "住所", "Address", "주소"],
+  "職安卡": ["职安卡", "安全衛生教育修了証", "Safety Training Card", "안전교육 이수증"],
+  "體檢": ["体检", "健康診断", "Medical Checkup", "건강검진"],
+  "勞保": ["劳保", "労働保険", "Labor Insurance", "산재보험"],
+  "職安卡到期日": ["职安卡到期日", "安全衛生教育修了証の有効期限", "Safety Card Expiration", "안전교육 이수증 만료일"],
+  "體檢到期日": ["体检到期日", "健康診断の有効期限", "Medical Checkup Expiration", "건강검진 만료일"],
+  "勞保到期日": ["劳保到期日", "労働保険の有効期限", "Insurance Expiration", "보험 만료일"],
+  "未提供": ["未提供", "未提出", "Not Provided", "미제공"],
+  "到期": ["到期", "有効期限切れ", "Expired", "만료"],
+  "請填入資料": ["请填写资料", "情報を入力してください", "Enter Details", "정보를 입력하세요"],
+  "請填入單價": ["请填写单价", "単価を入力してください", "Enter Unit Prices", "단가를 입력하세요"],
+  "可依照各案場修改材料單價": ["可根据各案场修改材料单价", "現場ごとに資材単価を変更できます", "Material prices can be set per site", "현장별 자재 단가를 수정할 수 있습니다"],
+  "工資\n（日薪／時薪）": ["工资\n（日薪／时薪）", "賃金\n（日給／時給）", "Wage\n(Daily / Hourly)", "임금\n(일급／시급)"],
+  "合計（天／小時）": ["合计（天／小时）", "合計（日／時間）", "Total (Days / Hours)", "합계 (일／시간)"],
+  "當月工資": ["当月工资", "当月賃金", "Monthly Wages", "당월 임금"],
+  "當月工資合計": ["当月工资合计", "当月賃金合計", "Total Monthly Wages", "당월 임금 합계"],
+  "出工": ["出工", "出面表", "Worker Attendance", "출역"],
+  "日薪": ["日薪", "日給", "Daily Rate", "일급"],
+  "時薪": ["时薪", "時給", "Hourly Rate", "시급"],
+  "未開始": ["未开始", "未着手", "Not Started", "미시작"],
+  "準備中": ["准备中", "準備中", "Preparing", "준비 중"],
+  "最後階段": ["最后阶段", "最終段階", "Final Stage", "마무리 단계"],
+  "施工中": ["施工中", "施工中", "In Progress", "시공 중"],
+  "已完成": ["已完成", "完了", "Completed", "완료됨"],
+  "未送貨": ["未送货", "未配送", "Not Delivered", "미배송"],
+  "已送貨": ["已送货", "納品済み", "Delivered", "배송 완료"],
+  "未到貨": ["未到货", "未入荷", "Not Received", "미입고"],
+  "已到貨": ["已到货", "入荷済み", "Received", "입고 완료"],
+  "上班": ["上班", "出勤", "Clocked In", "출근"],
+  "是": ["是", "はい", "Yes", "예"],
+  "否": ["否", "いいえ", "No", "아니요"],
+  "全部案場": ["全部案场", "すべての現場", "All Sites", "전체 현장"],
+  "黃色工資格可修改；本月工資不影響其他月份。": ["黄色工资单元格可修改；本月工资不影响其他月份。", "黄色の賃金セルは編集できます。他の月の賃金には影響しません。", "Edit the yellow wage cells. Changes apply to this month only.", "노란색 임금 셀을 수정할 수 있습니다. 변경 사항은 이 달에만 적용됩니다."],
+  "請從 App 更新備忘錄完成狀態。": ["请从 App 更新备忘录完成状态。", "メモの完了状態は App で変更してください。", "Update memo completion in the app.", "메모 완료 상태는 앱에서 변경하세요."],
+  "正在更新報表語言…": ["正在更新报表语言…", "レポートの言語を更新中…", "Updating report language…", "보고서 언어 업데이트 중…"],
+  "請輸入材料單價。": ["请输入材料单价。", "資材単価を入力してください。", "Enter the material unit price.", "자재 단가를 입력하세요."],
+  "請在此欄輸入材料單價；同步不會清除或移動既有品項的單價。": ["请在此列输入材料单价；同步不会清除或移动现有品项的单价。", "この列に資材単価を入力してください。同期しても既存品目の単価は削除・移動されません。", "Enter unit prices here. Syncing preserves each item's price.", "이 열에 자재 단가를 입력하세요. 동기화해도 기존 품목의 단가는 유지됩니다."],
+  "未填工資人數：": ["未填工资人数：", "賃金未入力の人数：", "Workers without wages: ", "임금 미입력 인원: "],
+  "有": ["有", "", "", ""],
+  "位人員未填入工資": ["位人员未填入工资", "名の賃金が未入力", " workers have no wage entered", "명의 임금이 미입력 상태입니다"]
+});
+let gcglReportLanguageCache = null;
+let gcglReportAliases = null;
+
+function normalizeReportLanguage_(locale, spreadsheetLocale) {
+  const value = String(locale || "").toLowerCase().replace(/_/g, "-");
+  if (/^zh(?:-|$)/.test(value)) {
+    if (/hans|(?:^|-)cn(?:-|$)|(?:^|-)sg(?:-|$)/.test(value)) return "zh-Hans";
+    if (/hant|(?:^|-)(tw|hk|mo)(?:-|$)/.test(value)) return "zh-Hant";
+    return /zh[-_](cn|sg)|hans/i.test(spreadsheetLocale || "") ? "zh-Hans" : "zh-Hant";
+  }
+  const language = value.split("-")[0];
+  return ["ja", "en", "ko"].indexOf(language) !== -1 ? language : "zh-Hant";
+}
+
+function reportLanguage_(spreadsheet) {
+  if (gcglReportLanguageCache) return gcglReportLanguageCache;
+  const properties = PropertiesService.getScriptProperties();
+  const saved = properties.getProperty(GCGL_CONFIG.reportLanguageProperty);
+  if (Object.values(GCGL_REPORT_LANGUAGES).indexOf(saved) !== -1) return (gcglReportLanguageCache = saved);
+  let locale = "", sheetLocale = "";
+  try { locale = Session.getActiveUserLocale(); } catch (_) { /* 舊環境未提供時採繁體中文。 */ }
+  try { sheetLocale = (spreadsheet || SpreadsheetApp.getActiveSpreadsheet()).getSpreadsheetLocale(); } catch (_) { }
+  const language = normalizeReportLanguage_(locale, sheetLocale);
+  properties.setProperty(GCGL_CONFIG.reportLanguageProperty, language);
+  return (gcglReportLanguageCache = language);
+}
+
+function reportText_(text) {
+  const values = Object.prototype.hasOwnProperty.call(GCGL_REPORT_TRANSLATIONS, text) ? GCGL_REPORT_TRANSLATIONS[text] : null;
+  const index = ["zh-Hans", "ja", "en", "ko"].indexOf(reportLanguage_());
+  return values && index >= 0 ? values[index] : text;
+}
+
+function reportCanonicalText_(text) {
+  if (typeof text !== "string" || text.indexOf("__") === 0) return text;
+  if (!gcglReportAliases) {
+    gcglReportAliases = Object.create(null);
+    Object.keys(GCGL_REPORT_TRANSLATIONS).forEach(function(key) {
+      [key].concat(GCGL_REPORT_TRANSLATIONS[key]).forEach(function(value) {
+        const token = value.replace(/\s/g, "").toLowerCase();
+        if (token && !gcglReportAliases[token]) gcglReportAliases[token] = key;
+      });
+    });
+    Object.assign(gcglReportAliases, {"note": "備註", "siteworker": "施工人員", "floor／area": "樓層/區域", "workername": "姓名", "工事内容": "工項",
+      "项目": "案場", "jobsite": "案場", "单位名称": "廠商名稱", "机械使用": "機具使用", "使用機械": "機具使用", "장비사용": "機具使用",
+      "contractsum": "承攬總價", "請負総額": "承攬總價", "도급총액": "承攬總價", "progressbilling": "計價表",
+      "工伤保险到期日": "勞保到期日", "労災保険の有効期限": "勞保到期日", "laborinsuranceexpirationdate": "勞保到期日"});
+  }
+  return gcglReportAliases[text.replace(/\s/g, "").toLowerCase()] || text;
+}
+
+function reportHeader_(text) {
+  return reportText_(reportCanonicalText_(text));
+}
+
+function reportStatus_(value) {
+  if (typeof value !== "string") return value;
+  const keys = ["未開始", "準備中", "施工中", "最後階段", "已完成", "未送貨", "已送貨", "未到貨", "已到貨", "上班"];
+  const key = keys.find(function(item) {
+    return [item].concat(GCGL_REPORT_TRANSLATIONS[item]).some(function(label) { return label.toLowerCase() === value.toLowerCase(); });
+  });
+  return key ? reportText_(key) : value;
+}
+
+function reportDisplayRows_(table, values) {
+  const columns = table.headers.map(function(header, index) {
+    return ["狀態", "送貨狀態", "進度", "施工進度", "目前進度"].indexOf(reportCanonicalText_(header)) !== -1 ? index : -1;
+  }).filter(function(index) { return index >= 0; });
+  return values.map(function(row) {
+    const copy = row.slice();
+    columns.forEach(function(index) { copy[index] = reportStatus_(copy[index]); });
+    if (table.key === "pricing_progress" || table.key === "pricing_detail") {
+      // 層級、類型及含稅為 App 的固定選項，名稱／計價表／明細等使用者文字不變。
+      table.headers.forEach(function(header, index) {
+        const field = reportCanonicalText_(header);
+        const choices = field === "層級" ? ["案場", "施工廠商"] : field === "類型" ? ["本工程", "追加工程"] : field === "含稅" ? ["是", "否"] : null;
+        const canonical = reportCanonicalText_(copy[index]);
+        if (choices && choices.indexOf(canonical) !== -1) copy[index] = reportText_(canonical);
+      });
+    }
+    return copy;
+  });
+}
+
+function renderReportLanguageSelector_(sheet) {
+  ensureSheetSize_(sheet, 1, 7);
+  sheet.showColumns(7);
+  const language = reportLanguage_(sheet.getParent());
+  const labels = Object.keys(GCGL_REPORT_LANGUAGES);
+  const label = labels.find(function(item) { return GCGL_REPORT_LANGUAGES[item] === language; });
+  sheet.getRange(1, 7).clearDataValidations().setValue(label)
+    .setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(labels, true).setAllowInvalid(false).build())
+    .setBackground(GCGL_REPORT_COLORS.titleFill).setFontColor(GCGL_REPORT_COLORS.text)
+    .setFontFamily("Arial").setFontSize(11).setHorizontalAlignment("center").setVerticalAlignment("middle");
+  sheet.setColumnWidth(7, 120);
+}
+
+function handleReportLanguageEdit_(event) {
+  const range = event.range;
+  if (range.getRow() !== 1 || range.getColumn() !== 7 || range.getNumRows() !== 1 || range.getNumColumns() !== 1) return false;
+  const sheet = range.getSheet();
+  const overview = loadTableSchemas_().find(function(table) { return table.key === "site_overview" && table.sheetName === sheet.getName(); });
+  if (!overview) return false;
+  const label = optionalString_(range.getValue());
+  const language = Object.prototype.hasOwnProperty.call(GCGL_REPORT_LANGUAGES, label) ? GCGL_REPORT_LANGUAGES[label] : null;
+  if (!language) { renderReportLanguageSelector_(sheet); return true; }
+  const previous = reportLanguage_(sheet.getParent());
+  if (previous === language) return true;
+  PropertiesService.getScriptProperties().setProperty(GCGL_CONFIG.reportLanguageProperty, language);
+  gcglReportLanguageCache = language;
+  // 走既有延後重建與每分鐘備援，不在 30 秒簡易事件內重畫所有報表。
+  markReportsPending_(GCGL_CONFIG.expectedTableKeys, false);
+  sheet.getParent().toast(reportText_("正在更新報表語言…"), "GCGL", 5);
+  return true;
+}
+
 /** 在試算表開啟時加入操作選單。 */
 function onOpen() {
+  reportLanguage_(SpreadsheetApp.getActiveSpreadsheet());
   SpreadsheetApp.getUi()
     .createMenu("GCGL 同步")
     .addItem("初始設定／查看同步密碼", "setupGCGLSyncFromMenu")
@@ -145,6 +408,8 @@ function onEdit(event) {
 
 function onEditContents_(event) {
   const range = event.range;
+  if (handleReportLanguageEdit_(event)) return;
+  if (handleMemoCompletionEdit_(event)) return;
   if (handleWorkerDirectoryEdit_(event)) return;
   if (handleWorkerWageEdit_(event)) return;
   if (handleMaterialSummaryPriceEdit_(event)) return;
@@ -157,7 +422,8 @@ function onEditContents_(event) {
   });
   if (!table) return;
 
-  const selectedSite = optionalString_(range.getValue()) || GCGL_CONFIG.allSitesLabel;
+  const chosenSite = optionalString_(range.getValue());
+  const selectedSite = !chosenSite || chosenSite === reportText_(GCGL_CONFIG.allSitesLabel) ? GCGL_CONFIG.allSitesLabel : chosenSite;
   PropertiesService.getScriptProperties().setProperty(
     reportSelectionPropertyKey_(table.key), selectedSite
   );
@@ -177,6 +443,7 @@ function setupGCGLSync() {
   if (!spreadsheet) {
     throw new Error("請從目標 Google 試算表的「擴充功能 → Apps Script」開啟並執行設定。");
   }
+  reportLanguage_(spreadsheet);
 
   const properties = PropertiesService.getScriptProperties();
   let token = properties.getProperty(GCGL_CONFIG.tokenProperty);
@@ -1190,6 +1457,7 @@ function migrateLegacyRawSheets_(spreadsheet) {
 // MARK: - 可閱讀報表分頁
 
 function renderReportSheets_(spreadsheet, tables, changedKeys) {
+  reportLanguage_(spreadsheet);
   const properties = PropertiesService.getScriptProperties();
   const revision = Utilities.getUuid();
   const activeKey = GCGL_CONFIG.pdfRenderActivePrefix + revision;
@@ -1697,6 +1965,8 @@ function clearUnusedReportBorders_(sheet, ranges, maxRows, maxColumns) {
 function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByKey, siteNames, materialSummaryTable, monthlyTable) {
   const siteIndex = reportSiteColumnIndex_(table.key);
   const summaryColumn = 6;
+  const summaryColumnCount = 2;
+  const companyMemoColumnCount = summaryColumn + summaryColumnCount - 1;
   const monthlySourceColumn = 24;
   const monthlySourceWidth = monthlyTable ? monthlyTable.headers.length - 1 : 0;
   const sheet = prepareReportSheet_(spreadsheet, table.sheetName, {
@@ -1712,21 +1982,22 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
   }
   const companyMemoText = buildPendingCompanyMemoSummary_(
     valuesByKey.memos || [],
-    recordIdsByKey.memos || []
+    recordIdsByKey.memos || [], spreadsheet.getSpreadsheetTimeZone() || Session.getScriptTimeZone()
   );
-  const memoLines = ["備忘錄"].concat(companyMemoText.split("\n"));
+  const companyMemoLines = companyMemoText.split("\n");
+  const memoLines = [reportText_("備忘錄")].concat(companyMemoLines);
   const expiredWorkers = buildExpiredWorkerDirectorySummary_(spreadsheet, valuesByKey.worker_directory || []);
-  if (expiredWorkers.length) memoLines.push("人員文件到期", ...expiredWorkers);
+  if (expiredWorkers.length) memoLines.push(reportText_("人員文件到期"), ...expiredWorkers);
   let startRow = memoLines.length + 4;
   let monthlySourceRow = 1;
 
   ensureSheetSize_(sheet, Math.max(siteNames.length * 12 + startRow, 10),
-    Math.max(summaryColumn, monthlySourceColumn + monthlySourceWidth - 1));
+    Math.max(summaryColumn + summaryColumnCount - 1, monthlySourceColumn + monthlySourceWidth - 1));
   sheet.setColumnWidths(1, 2, 120);
   sheet.setColumnWidth(3, 220);
   sheet.setColumnWidth(4, 120);
-  sheet.setColumnWidth(5, 440);
-  sheet.setColumnWidth(summaryColumn, 420);
+  sheet.setColumnWidth(5, 450);
+  sheet.setColumnWidth(summaryColumn, 330);
   sheet.getRange(1, 1, 1, summaryColumn).merge()
     .setValue(reportOverviewTitle_(spreadsheet))
     .setBackground(GCGL_REPORT_COLORS.navy)
@@ -1738,6 +2009,7 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
     .setVerticalAlignment("middle");
   sheet.setRowHeight(1, 36);
   sheet.setFrozenRows(1);
+  renderReportLanguageSelector_(sheet);
 
   const attendanceText = buildTodayAttendanceSummary_(spreadsheet,
     valuesByKey.attendance || [], recordIdsByKey.attendance || []);
@@ -1749,7 +2021,7 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
   }, 0);
   sheet.setRowHeight(2, Math.max(28, attendanceLines * 18 + 8));
 
-  const companyMemoRange = sheet.getRange(3, 1, memoLines.length, summaryColumn);
+  const companyMemoRange = sheet.getRange(3, 1, memoLines.length, companyMemoColumnCount);
   companyMemoRange
     .setBackground("#FFF7F7")
     .setFontColor(GCGL_REPORT_COLORS.text)
@@ -1761,7 +2033,7 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
     .setVerticalAlignment("top");
   frame(companyMemoRange, false, GCGL_REPORT_COLORS.red, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
   memoLines.forEach(function(line, index) {
-    sheet.getRange(index + 3, 1, 1, summaryColumn).merge().setValue(line);
+    sheet.getRange(index + 3, 1, 1, companyMemoColumnCount).merge().setValue(line);
     if (expiredWorkers.length && index >= memoLines.length - expiredWorkers.length - 1) {
       sheet.getRange(index + 3, 1).setFontColor("#D93025");
     }
@@ -1784,7 +2056,7 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
     const pendingSiteItems = buildPendingSiteMemoLines_(
       valuesByKey.memos || [],
       recordIdsByKey.memos || [],
-      siteName
+      siteName, spreadsheet.getSpreadsheetTimeZone() || Session.getScriptTimeZone()
     );
     const recordText = buildTodaySiteSummary_(spreadsheet, siteName, valuesByKey, pendingSiteItems);
     const renderedLineCount = recordText.split("\n").reduce(function(count, line) {
@@ -1794,17 +2066,17 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
       "承攬總價", "追加金額", "合計總價", "已計價", "計價進度", "施工進度", "總出工數"
     ];
     const metricRows = metricLabels.map(function(label, index) {
-      return [label, index === 6 ? totalWork : (overviewRow[index + 1] === undefined ? "" : overviewRow[index + 1])];
+      return [reportText_(label), index === 6 ? totalWork : (overviewRow[index + 1] === undefined ? "" : overviewRow[index + 1])];
     });
-    metricRows.push(["材料成本", 0], ["未填單價品項", 0]);
+    metricRows.push([reportText_("材料成本"), 0], [reportText_("未填單價品項"), 0]);
     const resourceRows = vendorTotals.map(function(vendor) {
-      return [vendor.name + " 累計出工數", vendor.people];
+      return [vendor.name + " " + reportText_("累計出工數"), vendor.people];
     });
-    // E 欄圖表高 250px；F 欄今日記錄按內容延長，不裁切機具、備註與未完成項目。
+    // E 欄圖表高 250px；F:G 合併寬 450px，今日記錄按內容延長。
     const blockRows = Math.max(10, metricRows.length, resourceRows.length,
       Math.ceil(renderedLineCount * 17 / 28) + 1);
     ensureSheetSize_(sheet, startRow + blockRows + 2,
-      Math.max(summaryColumn, monthlySourceColumn + monthlySourceWidth - 1));
+      Math.max(summaryColumn + summaryColumnCount - 1, monthlySourceColumn + monthlySourceWidth - 1));
     sheet.setRowHeight(startRow, 30);
     sheet.setRowHeights(startRow + 1, blockRows, 28);
     sheet.getRange(startRow, 1, 1, 4).merge()
@@ -1817,14 +2089,14 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
       .setHorizontalAlignment("left")
       .setVerticalAlignment("middle");
     sheet.getRange(startRow, 5)
-      .setValue("月份進度")
+      .setValue(reportText_("月份進度"))
       .setBackground(GCGL_REPORT_COLORS.titleFill)
       .setFontColor(GCGL_REPORT_COLORS.text)
       .setFontFamily("Arial")
       .setFontSize(11)
       .setFontWeight("bold");
-    sheet.getRange(startRow, summaryColumn)
-      .setValue("今日工程記錄")
+    sheet.getRange(startRow, summaryColumn, 1, summaryColumnCount).merge()
+      .setValue(reportText_("今日工程記錄"))
       .setBackground(GCGL_REPORT_COLORS.titleFill)
       .setFontColor(GCGL_REPORT_COLORS.text)
       .setFontFamily("Arial")
@@ -1869,7 +2141,7 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
       const unpricedItemCount = materialRows.filter(function(row) {
         return sameReportText_(row[0], siteName) && Number(row[3]) !== 0;
       }).length;
-      if (hasMaterials) sheet.getRange(startRow + 8, 1).setNote("尚未建立單價表");
+      if (hasMaterials) sheet.getRange(startRow + 8, 1).setNote(reportText_("尚未建立單價表"));
       costCell.setValue(0);
       missingPriceCell.setValue(unpricedItemCount);
     }
@@ -1888,12 +2160,12 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
     monthlySourceRow = chartResult.nextSourceRow;
     if (!chartResult.hasChart) {
       chartArea.merge()
-        .setValue("尚無月份進度資料")
+        .setValue(reportText_("尚無月份進度資料"))
         .setFontFamily("Arial").setFontSize(10)
         .setFontColor(GCGL_REPORT_COLORS.text)
         .setHorizontalAlignment("center").setVerticalAlignment("middle");
     }
-    const recordRange = sheet.getRange(startRow + 1, summaryColumn, blockRows, 1).merge()
+    const recordRange = sheet.getRange(startRow + 1, summaryColumn, blockRows, summaryColumnCount).merge()
       .setValue(recordText)
       .setBackground(GCGL_REPORT_COLORS.firstRow)
       .setFontColor(GCGL_REPORT_COLORS.text)
@@ -1915,7 +2187,7 @@ function buildSiteVendorWorkTotals_(siteName, workRows) {
   const totals = new Map();
   workRows.forEach(function(row) {
     if (!sameReportText_(row[1], siteName)) return;
-    const vendorName = optionalString_(row[4]) || "未指定廠商";
+    const vendorName = optionalString_(row[4]) || reportText_("未指定廠商");
     const people = Number(row[6]);
     totals.set(vendorName, (totals.get(vendorName) || 0) + (Number.isFinite(people) ? people : 0));
   });
@@ -1970,41 +2242,52 @@ function buildTodayAttendanceSummary_(spreadsheet, attendanceRows, attendanceRec
     if (Number.isFinite(hours) && hours > group.overtime) group.overtime = hours;
   });
   const sites = uniqueStrings_(names);
-  const lines = ["出勤：" + (sites.length ? sites.join("、") : "無案場出勤")];
+  const lines = [reportText_("出勤") + "：" + (sites.length ? sites.join("、") : reportText_("無案場出勤"))];
   groups.forEach(function(group) {
     if (!group.notes.length && group.overtime <= 0) return;
     if (groups.length > 1) lines.push(
-      uniqueStrings_(group.sites).join("、") || (group.company ? "公司" : "無案場出勤"));
+      uniqueStrings_(group.sites).join("、") || reportText_(group.company ? "公司" : "無案場出勤"));
     const notes = uniqueStrings_(group.notes).join("\n");
-    if (notes) lines.push("備註：" + notes);
-    if (group.overtime > 0) lines.push("加班：" + group.overtime + " 小時");
+    if (notes) lines.push(reportText_("備註") + "：" + notes);
+    if (group.overtime > 0) lines.push(reportText_("加班") + "：" + group.overtime + " " + reportText_("小時"));
   });
   return lines.join("\n");
 }
 
-function buildPendingCompanyMemoSummary_(memoRows, memoRecordIds) {
+
+/** 無法唯一辨識的舊日／月日期保留原文，不以今日日期或試算表地區猜測。 */
+function pendingMemoDateText_(value, timezone) {
+  const keys = attendanceDateKeys_(value, "", timezone || Session.getScriptTimeZone());
+  return keys.length === 1 ? keys[0].replace(/-/g, "/") : optionalString_(value).trim();
+}
+
+function datedPendingMemoItems_(row, timezone, addBullet) {
+  const date = pendingMemoDateText_(row[0], timezone);
+  return pendingMemoContent_(row).split(/\n(?=○ )/).map(function(item) {
+    const text = item.trim();
+    if (!text) return "";
+    const content = addBullet ? "○ " + text.replace(/^○\s*/, "") : text;
+    return (date ? date + "\n" : "") + content;
+  }).filter(Boolean);
+}
+
+function buildPendingCompanyMemoSummary_(memoRows, memoRecordIds, timezone) {
   const contents = [];
   memoRows.forEach(function(row, index) {
     const recordId = optionalString_(memoRecordIds[index]);
     if (recordId.indexOf("memo-company:") !== 0) return;
-    const pendingContent = pendingMemoContent_(row);
-    if (pendingContent) contents.push(pendingContent);
+    Array.prototype.push.apply(contents, datedPendingMemoItems_(row, timezone, false));
   });
-  return contents.length > 0 ? contents.join("\n") : "無未完成項目";
+  return contents.length > 0 ? contents.join("\n") : reportText_("無未完成項目");
 }
 
 /** 案場未完成事項只顯示於對應案場的今日工程記錄，保留項目原有的換行。 */
-function buildPendingSiteMemoLines_(memoRows, memoRecordIds, siteName) {
+function buildPendingSiteMemoLines_(memoRows, memoRecordIds, siteName, timezone) {
   const lines = [];
   memoRows.forEach(function(row, index) {
     if (optionalString_(memoRecordIds[index]).indexOf("memo-company:") === 0) return;
     if (!sameReportText_(row[1], siteName)) return;
-    const pendingContent = pendingMemoContent_(row);
-    if (!pendingContent) return;
-    pendingContent.split(/\n(?=○ )/).forEach(function(item) {
-      const itemText = item.trim().replace(/^○\s*/, "");
-      if (itemText) lines.push("○ " + itemText);
-    });
+    Array.prototype.push.apply(lines, datedPendingMemoItems_(row, timezone, true));
   });
   return lines;
 }
@@ -2022,62 +2305,64 @@ function pendingMemoContent_(row) {
 function buildTodaySiteSummary_(spreadsheet, siteName, valuesByKey, pendingSiteItems) {
   const timezone = spreadsheet.getSpreadsheetTimeZone() || Session.getScriptTimeZone();
   const todayKey = Utilities.formatDate(new Date(), timezone, "yyyy-MM-dd");
-  const memos = (valuesByKey.memos || []).filter(function(row) {
-    return sameReportText_(row[1], siteName) && reportDateKeys_(row[0], timezone).indexOf(todayKey) !== -1;
-  });
-  const workLogs = (valuesByKey.work_logs || []).filter(function(row) {
-    return sameReportText_(row[1], siteName) && reportDateKeys_(row[0], timezone).indexOf(todayKey) !== -1;
-  });
-  const materialOrders = (valuesByKey.material_orders || []).filter(function(row) {
-    return sameReportText_(row[1], siteName) && reportDateKeys_(row[0], timezone).indexOf(todayKey) !== -1;
-  });
+  function todayRows(key) {
+    return (valuesByKey[key] || []).map(function(row, index) { return {row: row, index: index}; }).filter(function(item) {
+      return sameReportText_(item.row[1], siteName) && reportDateKeys_(item.row[0], timezone).indexOf(todayKey) !== -1;
+    });
+  }
+  const memos = todayRows("memos"), workLogs = todayRows("work_logs"), materialOrders = todayRows("material_orders");
   const parts = [];
+  function addPart(lines) {
+    parts.push(lines.join("\n"));
+  }
   if (memos.length > 0) {
-    parts.push("備忘錄：\n" + memos.map(function(row) {
-      return optionalString_(row[3]) || "（無內容）";
-    }).join("\n"));
+    addPart([reportText_("備忘錄") + "："].concat(memos.map(function(item) {
+      return optionalString_(item.row[3]) || reportText_("（無內容）");
+    })));
   }
   const recordsByVendor = {};
   const vendorOrder = [];
-  workLogs.forEach(function(row) {
-    const vendor = optionalString_(row[4]) || "未指定";
+  workLogs.forEach(function(item) {
+    const vendor = optionalString_(item.row[4]) || reportText_("未指定");
     if (!recordsByVendor[vendor]) {
       recordsByVendor[vendor] = [];
       vendorOrder.push(vendor);
     }
-    recordsByVendor[vendor].push(row);
+    recordsByVendor[vendor].push(item);
   });
   vendorOrder.forEach(function(vendor) {
     const lines = [
-      "施工廠商：" + vendor
+      reportText_("施工廠商") + "：" + vendor
     ];
-    recordsByVendor[vendor].forEach(function(row, itemIndex) {
+    recordsByVendor[vendor].forEach(function(item, itemIndex) {
+      const row = item.row;
       lines.push(
-        (itemIndex + 1) + ". " + (optionalString_(row[2]) || "未填施工項目"),
-        "↳ 樓層：" + (optionalString_(row[3]) || "未填"),
-        "↳ 人數：" + (optionalString_(row[6]) || "0") + " 人"
+        (itemIndex + 1) + ". " + (optionalString_(row[2]) || reportText_("未填施工項目")),
+        "↳ " + reportText_("樓層") + "：" + (optionalString_(row[3]) || reportText_("未填")),
+        "↳ " + reportText_("人數") + "：" + (optionalString_(row[6]) || "0") + " " + reportText_("人")
       );
       const equipment = optionalString_(row[7]);
       const notes = optionalString_(row[8]);
-      if (equipment) lines.push("↳ 機具：" + equipment);
-      if (notes) lines.push("↳ 備註：" + notes);
+      if (equipment) lines.push("↳ " + reportText_("機具") + "：" + equipment);
+      if (notes) lines.push("↳ " + reportText_("備註") + "：" + notes);
     });
-    parts.push(lines.join("\n"));
+    addPart(lines);
   });
   if (materialOrders.length > 0) {
-    parts.push("材料訂購：\n" + materialOrders.map(function(row) {
-      const item = optionalString_(row[3]) || "未填品項";
+    addPart([reportText_("材料訂購") + "："].concat(materialOrders.map(function(entry) {
+      const row = entry.row;
+      const item = optionalString_(row[3]) || reportText_("未填品項");
       const quantity = optionalString_(row[4]) || "0";
-      const status = optionalString_(row[5]);
+      const status = reportStatus_(optionalString_(row[5]));
       return item + " × " + quantity + (status ? "（" + status + "）" : "");
-    }).join("\n"));
+    })));
   }
   if (pendingSiteItems && pendingSiteItems.length > 0) {
-    parts.push("未完成項目：\n" + pendingSiteItems.join("\n"));
+    addPart([reportText_("未完成項目") + "："].concat(pendingSiteItems));
   }
   return parts.length > 0
     ? parts.join("\n\n")
-    : "今日尚無工程記錄、備忘錄或材料訂購";
+    : reportText_("今日尚無工程記錄、備忘錄或材料訂購");
 }
 
 function reportOverviewTitle_(spreadsheet) {
@@ -2090,9 +2375,9 @@ function reportOverviewTitle_(spreadsheet) {
   const lastSyncAt = lastSuccessfulDataSyncAt_();
   const syncText = lastSyncAt
     ? Utilities.formatDate(lastSyncAt, timezone, "yyyy/MM/dd HH:mm:ss")
-    : "尚無記錄";
-  return "案場總覽　" + dateKey.replace(/-/g, "/") + " " + weekdays[weekdayIndex] +
-    "　同步資料時間：" + syncText;
+    : reportText_("尚無記錄");
+  return reportText_("案場總覽") + "　" + dateKey.replace(/-/g, "/") + " " + reportText_(weekdays[weekdayIndex]) +
+    "　" + reportText_("同步資料時間") + "：" + syncText;
 }
 
 function recordSuccessfulDataSync_() {
@@ -2165,7 +2450,7 @@ function insertSiteMonthlyProgressChart_(sheet, table, values, siteName, chartRo
     return { hasChart: false, nextSourceRow: sourceRow };
   }
 
-  const source = [headers].concat(rows);
+  const source = [headers.map(reportHeader_)].concat(rows);
   ensureSheetSize_(sheet, sourceRow + source.length - 1, sourceColumn + headers.length - 1);
   sheet.getRange(sourceRow, sourceColumn, source.length, headers.length).setValues(source);
   sheet.getRange(sourceRow + 1, sourceColumn + 1, rows.length, 2).setNumberFormat("0%");
@@ -2215,7 +2500,7 @@ function renderAttendanceReport_(spreadsheet, table, values, recordIds) {
     return copy;
   });
   const sheet = prepareReportSheet_(spreadsheet, table.sheetName);
-  const bodyRows = values.length > 0 ? values : [table.headers.map(function() { return ""; })];
+  const bodyRows = values.length > 0 ? reportDisplayRows_(table, values) : [table.headers.map(function() { return ""; })];
   const formats = (table.formats || []).slice();
   formats[0] = "yyyy/MM/dd ddd";
   writeReportTableBlock_(
@@ -2684,8 +2969,8 @@ function buildExpiredWorkerDirectorySummary_(spreadsheet, values) {
     for (let index = 0; index < 3; index++) {
       const date = workerDirectoryDate_(row[index + 3], timezone);
       if (date && date.key <= today) result.push(
-        (optionalString_(row[0]) || "未提供") + "：" + (optionalString_(row[1]) || "未提供") +
-        " — " + labels[index] + " " + date.key.replace(/-/g, "/") + " 到期");
+        (optionalString_(row[0]) || reportText_("未提供")) + "：" + (optionalString_(row[1]) || reportText_("未提供")) +
+        " — " + reportText_(labels[index]) + " " + date.key.replace(/-/g, "/") + " " + reportText_("到期"));
     }
   });
   return result;
@@ -2719,7 +3004,7 @@ function renderWorkerDirectoryReport_(spreadsheet, table, values, recordIds, tab
     const key = recordIds[index];
     if (!validWorkerDirectoryKey_(key)) throw new Error("施工人員缺少穩定識別碼，已停止重建。");
     const saved = details[key] || ["", ""];
-    const dates = [3, 4, 5].map(function(column) { return workerDirectoryDate_(row[column], timezone)?.date || "未提供"; });
+    const dates = [3, 4, 5].map(function(column) { return workerDirectoryDate_(row[column], timezone)?.date || reportText_("未提供"); });
     return row.slice(0, 3).concat(saved).map(function(value) {
       return workerDirectoryLiteral_(optionalString_(value).trim() ? value : "");
     }).concat(dates, [key]);
@@ -2735,13 +3020,13 @@ function renderWorkerDirectoryReport_(spreadsheet, table, values, recordIds, tab
     [180, 99, 99, 99, 300, 180, 180, 180, 100], ["@", "@", "@", "@", "@", "yyyy/MM/dd", "yyyy/MM/dd", "yyyy/MM/dd", "@"]);
   if (output.length) {
     sheet.getRange(firstDataRow, 4, output.length, 2).setBackground(GCGL_REPORT_COLORS.rememberedInput);
-    const missing = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=F4="未提供"')
+    const missing = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=F4="' + reportText_("未提供") + '"')
       .setFontColor("#D93025").setRanges([sheet.getRange(firstDataRow, 6, output.length, 3)]).build();
     const expired = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied("=AND(ISNUMBER(F4),F4<=TODAY())")
       .setBackground(GCGL_REPORT_COLORS.lightRed3).setRanges([sheet.getRange(firstDataRow, 6, output.length, 3)]).build();
     sheet.setConditionalFormatRules([missing, expired]);
   }
-  sheet.getRange(2, 4, 1, 2).setValues([["請填入資料", "請填入資料"]])
+  sheet.getRange(2, 4, 1, 2).setValues([[reportText_("請填入資料"), reportText_("請填入資料")]])
     .setFontFamily("Arial").setFontSize(10).setFontColor(GCGL_REPORT_COLORS.red)
     .setHorizontalAlignment("left").setWrap(true);
   sheet.setRowHeights(1, 2, 21);
@@ -2767,7 +3052,7 @@ function workerWageLayouts_(sheet) {
       throw new Error("施工人員分頁與工資月份不一致，已保留原資料。");
     }
     // 新版：工資、姓名、識別列；舊版：姓名、工資、識別列。
-    const wageRow = index >= 2 && optionalString_(values[index - 2][0]).replace(/\s/g, "") === "工資（日薪／時薪）"
+    const wageRow = index >= 2 && optionalString_(reportCanonicalText_(values[index - 2][0])).replace(/\s/g, "") === "工資（日薪／時薪）"
       ? index - 1 : index;
     layouts.push({row: wageRow, keyRow: index + 1, keys: keys});
   });
@@ -2853,8 +3138,8 @@ function renderWorkerAttendanceReport_(spreadsheet, table, values, recordIds) {
     const startRow = 3, inputRanges = [];
     const label = model.month.replace("-", "/");
     const dayCount = new Date(Date.UTC(Number(model.month.slice(0, 4)), Number(model.month.slice(5)), 0)).getUTCDate();
-    const headers = ["日期"].concat(model.columns.map(function(column) {
-      const text = column.vendorName + "\n" + column.workerName + (column.unit === "days" ? "/日薪" : "/時薪");
+    const headers = [reportText_("日期")].concat(model.columns.map(function(column) {
+      const text = column.vendorName + "\n" + column.workerName + "/" + reportText_(column.unit === "days" ? "日薪" : "時薪");
       return text[0] === "=" ? "'" + text : text;
     }));
     const wageRow = startRow + 1, nameRow = startRow + 2;
@@ -2868,8 +3153,8 @@ function renderWorkerAttendanceReport_(spreadsheet, table, values, recordIds) {
         return Object.prototype.hasOwnProperty.call(column.days, date) ? column.days[date] : "";
       })));
     }
-    rows.push(["合計（天／小時）"].concat(model.columns.map(function() { return ""; })));
-    rows.push(["當月工資"].concat(model.columns.map(function() { return ""; })));
+    rows.push([reportText_("合計（天／小時）")].concat(model.columns.map(function() { return ""; })));
+    rows.push([reportText_("當月工資")].concat(model.columns.map(function() { return ""; })));
     writeReportTableBlock_(sheet, wageRow, 1,
       ["工資\n（日薪／時薪）"].concat(model.columns.map(function(column) { return column.rate; })), rows,
       [180].concat(model.columns.map(function() { return 99; })), ["@"].concat(model.columns.map(function() { return "0.##"; })));
@@ -2893,8 +3178,10 @@ function renderWorkerAttendanceReport_(spreadsheet, table, values, recordIds) {
         const value = day > dayCount
           ? Object.keys(column.days).reduce(function(sum, date) { return sum + column.days[date]; }, 0)
           : column.days[model.month + "-" + String(day).padStart(2, "0")] || 0;
-        return (Number.isInteger(value) ? "0" : "0.############") + '"' +
-          (column.unit === "days" ? "天" : "小時") + '"';
+        const unitText = reportLanguage_() === "en"
+          ? " " + (column.unit === "days" ? (value === 1 ? "day" : "days") : (value === 1 ? "hour" : "hours"))
+          : reportText_(column.unit === "days" ? "天" : "小時");
+        return (Number.isInteger(value) ? "0" : "0.############") + '"' + unitText + '"';
       }));
     }
     sheet.getRange(firstDayRow, 2, dayCount + 1, model.columns.length).setNumberFormats(quantityFormats);
@@ -2915,10 +3202,10 @@ function renderWorkerAttendanceReport_(spreadsheet, table, values, recordIds) {
       return 'IF(COUNT(' + cells.join(',') + ')<' + cells.length + ',1,0)';
     });
     ensureSheetSize_(sheet, amountRow, Math.max(5, model.columns.length + 1));
-    sheet.getRange(1, 1).setValue(label + " " + GCGL_CONFIG.workerMonthSheetPrefix).setFontWeight("bold").setFontSize(14);
-    sheet.getRange(1, 2).setValue("當月工資合計").setFontWeight("bold");
+    sheet.getRange(1, 1).setValue(label + " " + reportText_("出工")).setFontWeight("bold").setFontSize(14);
+    sheet.getRange(1, 2).setValue(reportText_("當月工資合計")).setFontWeight("bold");
     sheet.getRange(1, 3).setFormula(grandTotalFormula).setNumberFormat("#,##0").setFontWeight("bold").setFontSize(14);
-    sheet.getRange(1, 4).setFormula('="有"&SUM(' + missingWorkerCounts.join(',') + ')&"位人員未填入工資"')
+    sheet.getRange(1, 4).setFormula('="' + reportText_("有") + '"&SUM(' + missingWorkerCounts.join(',') + ')&"' + reportText_("位人員未填入工資") + '"')
       .setFontColor(GCGL_REPORT_COLORS.red).setWrap(false);
     sheet.setRowHeight(1, 48);
     sheet.setColumnWidth(1, 180);
@@ -2928,7 +3215,7 @@ function renderWorkerAttendanceReport_(spreadsheet, table, values, recordIds) {
     // 說明列完整留在未凍結區，避免 A 欄凍結邊界切進合併儲存格。
     sheet.getRange(2, 2, 1, 3).merge()
       .setFontFamily("Arial").setFontSize(11).setFontColor(GCGL_REPORT_COLORS.red).setWrap(false);
-    sheet.getRange(2, 2).setValue("黃色工資格可修改；本月工資不影響其他月份。");
+    sheet.getRange(2, 2).setValue(reportText_("黃色工資格可修改；本月工資不影響其他月份。"));
     sheet.setFrozenRows(5);
     sheet.setFrozenColumns(1);
     // 重建期間如已有工資編輯完成保存，最後重讀一次，不以過期快照覆蓋它。
@@ -3082,7 +3369,7 @@ function materialCatalogLayout_(sheet) {
   if (!sheet || sheet.getMaxColumns() < 4) return null;
   const headers = ["品項識別碼", "分類", "品項名稱", "單價"];
   const headerRow = [3, 4, 1].find(function(row) {
-    return sheet.getMaxRows() >= row && arraysEqual_(sheet.getRange(row, 1, 1, 4).getValues()[0], headers);
+    return sheet.getMaxRows() >= row && arraysEqual_(sheet.getRange(row, 1, 1, 4).getValues()[0].map(reportCanonicalText_), headers);
   });
   return headerRow ? {headerRow: headerRow, firstDataRow: headerRow + 1} : null;
 }
@@ -3126,7 +3413,7 @@ function renderMaterialCatalogReport_(spreadsheet, table, values, recordIds) {
 
   const headers = ["品項識別碼", "分類", "品項名稱", "單價"];
   sheet.getRange(headerRow, 1, 1, managedColumnCount)
-    .setValues([headers])
+    .setValues([headers.map(reportHeader_)])
     .setBackground(GCGL_REPORT_COLORS.navy)
     .setFontColor(GCGL_REPORT_COLORS.headerText)
     .setFontFamily("Arial")
@@ -3148,7 +3435,7 @@ function renderMaterialCatalogReport_(spreadsheet, table, values, recordIds) {
         SpreadsheetApp.newDataValidation()
           .requireNumberGreaterThanOrEqualTo(0)
           .setAllowInvalid(true)
-          .setHelpText("請輸入材料單價。")
+          .setHelpText(reportText_("請輸入材料單價。"))
           .build()
       );
     const tableRange = sheet.getRange(headerRow, 1, outputRows.length + 1, managedColumnCount);
@@ -3179,10 +3466,10 @@ function renderMaterialCatalogReport_(spreadsheet, table, values, recordIds) {
   }
 
   sheet.getRange(1, 1, 2, managedColumnCount).clearContent();
-  sheet.getRange(2, 4).setValue("請填入單價")
+  sheet.getRange(2, 4).setValue(reportText_("請填入單價"))
     .setFontFamily("Arial").setFontSize(10).setFontColor(GCGL_REPORT_COLORS.red)
     .setHorizontalAlignment("left").setWrap(true);
-  sheet.getRange(headerRow, 4).setNote("請在此欄輸入材料單價；同步不會清除或移動既有品項的單價。");
+  sheet.getRange(headerRow, 4).setNote(reportText_("請在此欄輸入材料單價；同步不會清除或移動既有品項的單價。"));
   sheet.setColumnWidth(1, 180);
   sheet.setColumnWidth(2, 150);
   sheet.setColumnWidth(3, 260);
@@ -3256,7 +3543,7 @@ function renderMaterialCostReport_(spreadsheet, table, values, siteNames, priceS
   const widths = (table.widths || []).concat([110, 130, 180, 180]);
   const formats = (table.formats || []).concat(["#,##0.##", "#,##0.##", "@", "@"]);
   const bodyRows = values.length > 0
-    ? values.map(function(row, index) {
+    ? reportDisplayRows_(table, values).map(function(row, index) {
         return row.concat(["", "", identities[index].key, identities[index].catalogId]);
       })
     : [headers.map(function() { return ""; })];
@@ -3307,7 +3594,7 @@ function renderMaterialCostReport_(spreadsheet, table, values, siteNames, priceS
   }
   renderReportSelectors_(sheet, selectedSite, siteNames, requestedReportColumnWidth_(headers[0]));
   if (table.key === "material_summary") {
-    sheet.getRange(2, 8).setValue("可依照各案場修改材料單價")
+    sheet.getRange(2, 8).setValue(reportText_("可依照各案場修改材料單價"))
       .setFontFamily("Arial").setFontSize(11).setFontColor("#D93025")
       .setHorizontalAlignment("left").setVerticalAlignment("middle").setWrap(false);
   }
@@ -3649,7 +3936,7 @@ function mergeReportRecordCells_(sheet, table, values, recordIds, firstRow) {
   }
 }
 
-/** A1 切換只重畫此報表；來源仍是完整隱藏資料，絕不讀取已合併的可見儲存格。 */
+/** A1 切換只重畫此報表；來源仍是完整隱藏資料。 */
 function refreshSelectedReport_(spreadsheet, tables, table) {
   const lock = LockService.getScriptLock();
   try { lock.waitLock(5000); } catch (_) { markReportsPending_([table.key], true); return; }
@@ -3676,7 +3963,121 @@ function refreshSelectedReport_(spreadsheet, tables, table) {
   } finally { lock.releaseLock(); }
 }
 
+/** 先排序原始逐列資料，再合併日期／案場，避免字串排序或合併儲存格打散同筆記錄。 */
+function chronologicalWorkLogRows_(spreadsheet, table, values, recordIds) {
+  const timezone = spreadsheet.getSpreadsheetTimeZone() || Session.getScriptTimeZone();
+  const rawDateIndex = table.headers.indexOf(GCGL_CONFIG.workDateKeyHeader);
+  const groupOrder = Object.create(null);
+  const rows = values.map(function(row, index) {
+    const rawDate = rawDateIndex < 0 ? "" : optionalString_(row[rawDateIndex]);
+    const keys = (/^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? [rawDate] : reportDateKeys_(row[0], timezone))
+      .filter(function(key) {
+        const date = new Date(key + "T12:00:00Z");
+        return !isNaN(date.getTime()) && date.toISOString().slice(0, 10) === key;
+      });
+    const dateKey = keys.length === 1 ? keys[0] : "";
+    const id = (recordIds || [])[index] || "";
+    const groupID = reportRecordGroupID_(table.key, id);
+    const key = JSON.stringify([dateKey, row[1], groupID || "row-" + index]);
+    if (groupOrder[key] === undefined) groupOrder[key] = index;
+    return {row: row, id: id, date: dateKey, group: groupOrder[key], index: index};
+  });
+  rows.sort(function(left, right) {
+    if (left.date !== right.date) {
+      if (!left.date) return 1;
+      if (!right.date) return -1;
+      return left.date < right.date ? -1 : 1;
+    }
+    return left.group - right.group || left.index - right.index;
+  });
+  return {values: rows.map(function(item) { return item.row; }),
+    recordIds: rows.map(function(item) { return item.id; })};
+}
+
+/** 擁有者仍可確認警告後編輯；以 App 同步來源還原，不保留表格端的獨立完成狀態。 */
+function handleMemoCompletionEdit_(event) {
+  const range = event.range;
+  if (range.getColumn() > 4 || range.getColumn() + range.getNumColumns() <= 4 ||
+      range.getRow() + range.getNumRows() <= 4) return false;
+  const sheet = range.getSheet();
+  const table = loadTableSchemas_().find(function(item) {
+    return item.key === "memos" && reportSheetName_(item) === sheet.getName();
+  });
+  if (!table || sheet.getLastRow() < 4 || sheet.getRange(3, 5).getValue() !== GCGL_CONFIG.memoRecordKeyHeader) return false;
+  const firstRow = Math.max(4, range.getRow());
+  const lastRow = Math.min(sheet.getLastRow(), range.getRow() + range.getNumRows() - 1);
+  if (lastRow < firstRow) return false;
+  const stored = readStoredRowsByTable_(sheet.getParent(), [table])[table.key] || [];
+  const sourceRows = stored.map(function(row) { return row.slice(GCGL_CONFIG.metadataHeaders.length); });
+  const recordIds = stored.map(function(row) { return row[1]; });
+  const checkedByKey = new Map(memoCheckboxRows_(sourceRows, recordIds).map(function(item) { return [item.key, item.checked]; }));
+  const keys = sheet.getRange(firstRow, 5, lastRow - firstRow + 1, 1).getValues();
+  const values = keys.map(function(row) { return checkedByKey.has(row[0]) ? checkedByKey.get(row[0]) : ""; });
+  // 原生排序會帶著 E 欄識別移動；同名、多行及公司項目都不依文字或舊列號猜測。
+  let start = 0;
+  for (let index = 1; index <= values.length; index++) {
+    if (index < values.length && (values[index] === "") === (values[start] === "")) continue;
+    const target = sheet.getRange(firstRow + start, 4, index - start, 1);
+    if (values[start] === "") target.clearContent();
+    else target.setValues(values.slice(start, index).map(function(value) { return [value]; }));
+    start = index;
+  }
+  if (values.some(function(value) { return value === ""; })) markReportsPending_(["memos"], false);
+  sheet.getParent().toast(reportText_("請從 App 更新備忘錄完成狀態。"), "GCGL", 5);
+  return true;
+}
+
+function memoSourceSignature_(row) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(row))
+    .map(function(byte) { return (byte & 255).toString(16).padStart(2, "0"); }).join("");
+}
+
+function memoCheckboxRows_(sourceRows, recordIds) {
+  const occurrences = Object.create(null);
+  return sourceRows.flatMap(function(row, index) {
+    const content = optionalString_(row[3]);
+    const baseKey = optionalString_((recordIds || [])[index]) || "legacy-memo:" + memoSourceSignature_(row.slice(0, 3));
+    const pending = Object.create(null);
+    pendingMemoContent_(row).split(/\n(?=○ )/).forEach(function(item) {
+      if (item.trim()) pending[item.trim()] = (pending[item.trim()] || 0) + 1;
+    });
+    return content.split(/\n(?=○ )/).filter(function(item) { return !!item.trim(); }).map(function(item) {
+      const isPending = row.length > 4 ? (pending[item.trim()] || 0) > 0 : !/ ✓\s*$/.test(item);
+      if (isPending && pending[item.trim()]) pending[item.trim()]--;
+      const appChecked = !isPending;
+      const cleaned = appChecked ? item.replace(/ ✓\s*$/, "") : item;
+      // 以項目文字建立識別；其他項目的插入、移除或排序不會把勾選套到另一項。
+      const itemKey = baseKey + ":" + memoSourceSignature_([cleaned]);
+      const occurrence = occurrences[itemKey] || 0;
+      occurrences[itemKey] = occurrence + 1;
+      const key = occurrence ? itemKey + ":duplicate:" + occurrence : itemKey;
+      const signature = memoSourceSignature_(row.slice(0, 3).concat([cleaned, appChecked]));
+      return {date: row[0], site: row[1], content: cleaned, checked: appChecked, key: key, signature: signature};
+    });
+  });
+}
+
+function configureMemoCheckboxes_(sheet, rows, tableBlock) {
+  sheet.getRange(3, 5, 1, 2).setValues([[GCGL_CONFIG.memoRecordKeyHeader, GCGL_CONFIG.memoSourceSignatureHeader]]);
+  tableBlock.endColumn = 6;
+  if (!rows.length) return;
+  sheet.getRange(4, 5, rows.length, 2).setNumberFormat("@").setValues(rows.map(function(row) {
+    return [row.key, row.signature];
+  }));
+  const checkboxes = sheet.getRange(4, 4, rows.length, 1);
+  checkboxes.setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().setAllowInvalid(false).build())
+    .setHorizontalAlignment("center");
+  const rule = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied("=$D4=TRUE")
+    .setBackground(GCGL_REPORT_COLORS.lightRed3).setRanges([sheet.getRange(4, 1, rows.length, 4)]).build();
+  sheet.setConditionalFormatRules(sheet.getConditionalFormatRules().concat([rule]));
+}
+
 function renderFlatReport_(spreadsheet, table, values, siteNames, recordIds) {
+  if (table.key === "work_logs") {
+    const ordered = chronologicalWorkLogRows_(spreadsheet, table, values, recordIds);
+    values = ordered.values;
+    recordIds = ordered.recordIds;
+  }
   const sheetName = reportSheetName_(table);
   const isPricingReport = ["pricing_progress", "pricing_detail"].indexOf(table.key) !== -1;
   if (isPricingReport || table.key === "work_logs") {
@@ -3684,7 +4085,10 @@ function renderFlatReport_(spreadsheet, table, values, siteNames, recordIds) {
     if (table.key === "work_logs") previousNames.push(GCGL_CONFIG.previousWorkLogReportSheetName);
     migrateReadableReportSheet_(spreadsheet, sheetName, previousNames);
   }
-  const sheet = prepareReportSheet_(spreadsheet, sheetName);
+  const memoRows = table.key === "memos"
+    ? memoCheckboxRows_(values, recordIds) : [];
+  const sheet = prepareReportSheet_(spreadsheet, sheetName,
+    table.key === "memos" ? {hiddenColumns: [5, 2], visibleColumns: 4} : undefined);
   // 舊合併計價表以 hideRows 篩選；拆開後清除殘留的列隱藏，改用原生 Filter。
   if (isPricingReport) sheet.showRows(1, sheet.getMaxRows());
   // 未完成內容只供總覽計算，不出現在使用者閱讀的備忘錄表格。
@@ -3700,12 +4104,22 @@ function renderFlatReport_(spreadsheet, table, values, siteNames, recordIds) {
     visibleTable = reportTableWithoutColumn_(visibleTable, 4);
     visibleValues = visibleValues.map(function(row) { return withoutArrayIndex_(row, 4); });
   }
-  const reportTable = table.key === "memos"
+  let reportTable = table.key === "memos"
     ? reportTableWithoutColumn_(visibleTable, 2)
     : visibleTable;
   let reportValues = table.key === "memos"
     ? visibleValues.map(function(row) { return withoutArrayIndex_(row, 2); })
     : visibleValues;
+  if (table.key === "memos") {
+    reportTable = Object.assign({}, reportTable, {
+      headers: reportTable.headers.concat(["已完成"]),
+      widths: (reportTable.widths || []).concat([99]),
+      formats: (reportTable.formats || []).concat(["General"])
+    });
+    reportValues = memoRows.map(function(row) {
+      return [row.date, row.site, row.content, row.checked];
+    });
+  }
   const selectedSite = selectedSiteForReport_(table.key, siteNames);
   const selectedRows = selectReportRows_(table, reportValues, recordIds || [], selectedSite);
   if (usesMergedRecordLayout_(table)) reportValues = selectedRows.values;
@@ -3717,7 +4131,7 @@ function renderFlatReport_(spreadsheet, table, values, siteNames, recordIds) {
     3,
     1,
     reportTable.headers,
-    bodyRows,
+    reportDisplayRows_(reportTable, bodyRows),
     reportTable.widths || [],
     reportTable.formats || []
   );
@@ -3727,6 +4141,7 @@ function renderFlatReport_(spreadsheet, table, values, siteNames, recordIds) {
       if (column <= reportTable.headers.length) sheet.setColumnWidth(column, 180);
     });
   }
+  if (table.key === "memos") configureMemoCheckboxes_(sheet, memoRows, tableBlock);
   if (usesMergedRecordLayout_(table)) {
     mergeReportRecordCells_(sheet, table, reportValues, selectedRows.recordIds, 4);
   } else {
@@ -3844,11 +4259,11 @@ function selectedSiteForReport_(tableKey, siteNames) {
 
 function renderReportSelectors_(sheet, selectedSite, siteNames, firstColumnWidth) {
   const validation = SpreadsheetApp.newDataValidation()
-    .requireValueInList([GCGL_CONFIG.allSitesLabel].concat(siteNames), true)
+    .requireValueInList([reportText_(GCGL_CONFIG.allSitesLabel)].concat(siteNames), true)
     .setAllowInvalid(false)
     .build();
   sheet.getRange(1, 1)
-    .setValue(selectedSite)
+    .setValue(selectedSite === GCGL_CONFIG.allSitesLabel ? reportText_(selectedSite) : selectedSite)
     .setDataValidation(validation)
     .clearNote()
     .setBackground(GCGL_REPORT_COLORS.titleFill)
@@ -3942,7 +4357,7 @@ function writeReportTableBlock_(sheet, startRow, startColumn, headers, rows, wid
   const bodyRange = sheet.getRange(startRow + 1, startColumn, rowCount, columnCount);
   const tableRange = sheet.getRange(startRow, startColumn, rowCount + 1, columnCount);
 
-  headerRange.setValues([headers])
+  headerRange.setValues([headers.map(reportHeader_)])
     .setBackground(GCGL_REPORT_COLORS.navy)
     .setFontColor(GCGL_REPORT_COLORS.headerText)
     .setFontFamily("Arial")
@@ -4170,6 +4585,9 @@ function applyGCGLReportProtection_(spreadsheet) {
     const inputRanges = materialPriceInputRanges_(sheet, catalogName);
     if (selectorSheetNames.indexOf(sheet.getName()) !== -1) {
       inputRanges.push(sheet.getRange(1, 1));
+    }
+    if (tables.some(function(table) { return table.key === "site_overview" && table.sheetName === sheet.getName(); })) {
+      inputRanges.push(sheet.getRange(1, 7));
     }
     const summary = tables.find(function(table) {
       return table.key === "material_summary" && table.sheetName === sheet.getName();
