@@ -1,4 +1,4 @@
-// Version: 3.2
+// Version: 3.7
 
 const GCGL_CONFIG = Object.freeze({
   schemaVersion: 1,
@@ -35,6 +35,7 @@ const GCGL_CONFIG = Object.freeze({
   materialPricesHeaders: ["__price_key", "__catalog_id", "__category", "__item", "__unit_price"],
   materialPriceKeyHeader: "__material_price_key",
   materialCatalogIdHeader: "__material_catalog_id",
+  materialSiteNameHeader: "__material_site_name",
   attendanceWorkersHeader: "__attendance_workers_json",
   workDateKeyHeader: "__work_date_key",
   memoRecordKeyHeader: "__memo_record_key",
@@ -44,7 +45,8 @@ const GCGL_CONFIG = Object.freeze({
   workerMonthSheetsPropertyPrefix: "GCGL_WORKER_MONTH_SHEETS_",
   workerWagesSheetName: "__GCGL_WORKER_WAGES",
   workerWagesHeaders: ["__wage_key", "__rate", "__mode"],
-  workerDirectorySheetName: "施工人員",
+  workerDirectorySheetName: "施工廠商及人員",
+  workerOwnerInfoHeader: "__worker_owner_json",
   workerDirectorySheetIdProperty: "GCGL_WORKER_DIRECTORY_SHEET_ID",
   workerDirectoryKeyHeader: "__worker_directory_key",
   workerDetailsSheetName: "__GCGL_WORKER_DETAILS",
@@ -100,7 +102,7 @@ const GCGL_CONFIG = Object.freeze({
     material_summary: "材料統計",
     material_orders: "材料訂購",
     material_catalog: "材料單價表",
-    worker_directory: "施工人員"
+    worker_directory: "施工廠商及人員"
   }
 });
 
@@ -218,6 +220,9 @@ const GCGL_REPORT_TRANSLATIONS = Object.freeze({
   "送貨狀態": ["送货状态", "配送状況", "Delivery Status", "배송 상태"],
   "到貨日期": ["到货日期", "納品日", "Date Received", "입고일"],
   "廠商名稱": ["厂商名称", "業者名", "Contractor Name", "업체명"],
+  "說明": ["说明", "詳細情報", "Details", "상세 정보"],
+  "負責人": ["负责人", "担当者", "Contact Person", "담당자"],
+  "統編": ["税号", "税務番号", "Tax ID", "사업자등록번호"],
   "姓名": ["姓名", "氏名", "Worker Name", "성명"],
   "電話": ["电话", "電話番号", "Phone", "전화번호"],
   "身分證號": ["身份证号", "身分証番号", "ID Number", "신분증 번호"],
@@ -412,6 +417,7 @@ function onEditContents_(event) {
   if (handleMemoCompletionEdit_(event)) return;
   if (handleWorkerDirectoryEdit_(event)) return;
   if (handleWorkerWageEdit_(event)) return;
+  if (handleMaterialCatalogPriceEdit_(event)) return;
   if (handleMaterialSummaryPriceEdit_(event)) return;
   if (range.getRow() !== 1 || range.getColumn() !== 1) return;
 
@@ -551,14 +557,16 @@ function doPost(event) {
           : exportReportPDF_(reportSpreadsheet, payload)});
     }
 
-    // 可選擴充欄位：舊部署忽略它，既有十一張同步資料表不因新版 App 中斷。
+    // 可選擴充欄位：同時接受舊版六欄與含廠商基本資料的七欄名冊。
     let directory = null;
     if (payload.workerDirectory != null) {
       directory = validateTables_([payload.workerDirectory], true, true)[0];
-      if (directory.key !== "worker_directory" || directory.headers.length !== 6 ||
+      if (directory.key !== "worker_directory" || [6, 7].indexOf(directory.headers.length) === -1 ||
+          (directory.headers.length === 7 && directory.headers[6] !== GCGL_CONFIG.workerOwnerInfoHeader) ||
           directory.rows.some(function(row) {
-            return !validWorkerDirectoryKey_(row.recordId) || row.values.some(function(value) { return typeof value !== "string"; });
+            return !validWorkerDirectoryRecordKey_(row.recordId) || row.values.some(function(value) { return typeof value !== "string"; });
           })) throw new Error("施工人員名冊格式不正確，請更新 App 後重新同步。");
+      directory.rows.forEach(function(row) { workerDirectoryOwnerInfo_(row.values); });
       directory.sheetName = GCGL_CONFIG.workerDirectorySheetName;
     }
 
@@ -1558,7 +1566,8 @@ function renderReportSheetsContents_(spreadsheet, tables, changedKeys) {
           spreadsheet,
           table,
           valuesByKey[table.key],
-          recordIdsByKey[table.key]
+          recordIdsByKey[table.key],
+          valuesByKey.worker_directory || []
         );
         renderWorkerAttendanceReport_(spreadsheet, table, valuesByKey[table.key], recordIdsByKey[table.key]);
       } else if (
@@ -1821,6 +1830,8 @@ function reportKeysForChangedTables_(changedKeys) {
     ? uniqueStrings_(changedKeys)
     : GCGL_CONFIG.expectedTableKeys.slice();
   const result = keys.slice();
+  // 名冊亦供出勤欄位核對；新登錄／更名人員後，讓舊備註的顯示同步更新。
+  if (keys.indexOf("worker_directory") !== -1) result.push("attendance");
   if (keys.indexOf("material_catalog") !== -1 || keys.indexOf("material_summary") !== -1) {
     result.push("material_summary", "material_orders");
   }
@@ -2012,7 +2023,7 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
   renderReportLanguageSelector_(sheet);
 
   const attendanceText = buildTodayAttendanceSummary_(spreadsheet,
-    valuesByKey.attendance || [], recordIdsByKey.attendance || []);
+    valuesByKey.attendance || [], recordIdsByKey.attendance || [], valuesByKey.worker_directory || []);
   sheet.getRange(2, 1, 1, summaryColumn).merge().setValue(attendanceText)
     .setFontFamily("Arial").setFontSize(11).setFontColor(GCGL_REPORT_COLORS.text)
     .setWrap(true).setHorizontalAlignment("left").setVerticalAlignment("middle");
@@ -2133,7 +2144,7 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
       .setFontColor(GCGL_REPORT_COLORS.red);
     sheet.getRange(startRow + 9, 1).setFontColor(GCGL_REPORT_COLORS.red);
     if (hasMaterials && costReportExists) {
-      const costFormulas = siteMaterialCostFormulas_(siteName, materialSummaryTable, materialRows.length);
+      const costFormulas = siteMaterialCostFormulas_(siteName, materialSummaryTable, materialRows.length, spreadsheet);
       costCell.setFormula(costFormulas.total);
       missingPriceCell.setFormula(costFormulas.missingCount);
     } else {
@@ -2196,10 +2207,15 @@ function buildSiteVendorWorkTotals_(siteName, workRows) {
 }
 
 /** 使用公式連到材料統計，先加總已填單價的成本，另外計算未填單價的品項數。 */
-function siteMaterialCostFormulas_(siteName, table, sourceRowCount) {
+function siteMaterialCostFormulas_(siteName, table, sourceRowCount, spreadsheet) {
   const reference = quoteSheetNameForFormula_(table.sheetName);
   const lastRow = Math.max(sourceRowCount + 3, 4);
-  const siteRange = reference + "!$A$4:$A$" + lastRow;
+  // A 欄合併後只有首列留有文字；逐列案場副本用於加總，不受顯示或篩選影響。
+  const sourceSheet = spreadsheet && spreadsheet.getSheetByName(table.sheetName);
+  const hasSiteCopy = !spreadsheet || (sourceSheet &&
+    sourceSheet.getRange(3, table.headers.length + 5).getValue() === GCGL_CONFIG.materialSiteNameHeader);
+  const siteColumn = hasSiteCopy ? reportColumnLetter_(table.headers.length + 5) : "A";
+  const siteRange = reference + "!$" + siteColumn + "$4:$" + siteColumn + "$" + lastRow;
   const quantityRange = reference + "!$D$4:$D$" + lastRow;
   const priceColumn = reportColumnLetter_(table.headers.length + 1);
   const subtotalColumn = reportColumnLetter_(table.headers.length + 2);
@@ -2214,12 +2230,13 @@ function siteMaterialCostFormulas_(siteName, table, sourceRowCount) {
 }
 
 /** 當日出勤依原始記錄分組；跨案場不重複加班，備註保留換行。 */
-function buildTodayAttendanceSummary_(spreadsheet, attendanceRows, attendanceRecordIds) {
+function buildTodayAttendanceSummary_(spreadsheet, attendanceRows, attendanceRecordIds, directoryRows) {
   const timezone = spreadsheet.getSpreadsheetTimeZone() || Session.getScriptTimeZone();
   const today = Utilities.formatDate(new Date(), timezone, "yyyy-MM-dd");
   const table = loadTableSchemas_().find(function(item) { return item.key === "attendance"; });
   const headers = table ? table.headers : [];
   const workerColumn = headers.indexOf(GCGL_CONFIG.attendanceWorkersHeader);
+  const workerNameIndex = attendanceWorkerNameIndex_(directoryRows, workerColumn < 0 ? [] : attendanceRows.map(function(row) { return row[workerColumn]; }));
   const groups = [], byId = Object.create(null), names = [];
   attendanceRows.forEach(function(row, index) {
     const id = optionalString_(attendanceRecordIds[index]);
@@ -2236,7 +2253,7 @@ function buildTodayAttendanceSummary_(spreadsheet, attendanceRows, attendanceRec
     const site = optionalString_(row[1]);
     if (company) group.company = true;
     if (site && !company && !unassigned) { names.push(site); group.sites.push(site); }
-    const fields = legacyAttendanceReportFields_(row[4], raw, headers[4]);
+    const fields = legacyAttendanceReportFields_(row[4], raw, headers[4], workerNameIndex);
     if (fields.notes) group.notes.push(fields.notes);
     const hours = Number(row[3]);
     if (Number.isFinite(hours) && hours > group.overtime) group.overtime = hours;
@@ -2472,10 +2489,11 @@ function insertSiteMonthlyProgressChart_(sheet, table, values, siteName, chartRo
   return { hasChart: true, nextSourceRow: sourceRow + source.length + 2 };
 }
 
-function renderAttendanceReport_(spreadsheet, table, values, recordIds) {
+function renderAttendanceReport_(spreadsheet, table, values, recordIds, directoryRows) {
   const timezone = spreadsheet.getSpreadsheetTimeZone() || Session.getScriptTimeZone();
   const workerColumn = table.headers.indexOf(GCGL_CONFIG.attendanceWorkersHeader);
   const workerPayloads = values.map(function(row) { return workerColumn < 0 ? "" : row[workerColumn]; });
+  const workerNameIndex = attendanceWorkerNameIndex_(directoryRows, workerPayloads);
   if (workerColumn !== -1) {
     table = reportTableWithoutColumn_(table, workerColumn);
     values = values.map(function(row) { return withoutArrayIndex_(row, workerColumn); });
@@ -2488,7 +2506,7 @@ function renderAttendanceReport_(spreadsheet, table, values, recordIds) {
       headers: table.headers.concat([labels[noteHeader] || "施工人員"]),
       widths: (table.widths || []).concat([300]), formats: (table.formats || []).concat(["@"])};
     values = values.map(function(row, index) {
-      const fields = legacyAttendanceReportFields_(row[4], workerPayloads[index], noteHeader);
+      const fields = legacyAttendanceReportFields_(row[4], workerPayloads[index], noteHeader, workerNameIndex);
       return row.slice(0, 4).concat([fields.notes, fields.workers]);
     });
   }
@@ -2531,19 +2549,78 @@ function renderAttendanceReport_(spreadsheet, table, values, recordIds) {
   sheet.setFrozenRows(1);
 }
 
-/** 以既有結構化人員核對舊版自動附加的尾段；無法核對的文字保留原樣。 */
-function legacyAttendanceReportFields_(notes, raw, noteHeader) {
-  notes = optionalString_(notes);
-  const unchanged = {notes: notes, workers: ""};
+/** 僅建立顯示用名冊，不由姓名產生 ID、工數或工資資料。 */
+function attendanceWorkerNameIndex_(directoryRows, rawPayloads) {
+  const namesByPrefix = new Map();
+  function add(vendor, name) {
+    if (typeof vendor !== "string" || !vendor.trim() || /[\r\n]/.test(vendor) ||
+        typeof name !== "string" || !name.trim() || /[\r\n]/.test(name)) return;
+    const prefix = vendor + "：";
+    if (!namesByPrefix.has(prefix)) namesByPrefix.set(prefix, new Set());
+    namesByPrefix.get(prefix).add(name);
+  }
+  (directoryRows || []).forEach(function(row) { add(row[0], row[1]); });
+  (rawPayloads || []).forEach(function(raw) {
+    const payload = legacyAttendanceWorkerPayload_(raw);
+    if (payload) payload.workers.forEach(function(worker) { add(worker.vendorName, worker.workerName); });
+  });
+  return Array.from(namesByPrefix, function(entry) { return {prefix: entry[0], names: Array.from(entry[1])}; });
+}
+
+function legacyAttendanceWorkerPayload_(raw) {
   let payload;
-  try { payload = JSON.parse(optionalString_(raw)); } catch (_) { return unchanged; }
-  if (!payload || ["days", "hours"].indexOf(payload.unit) === -1 || !Array.isArray(payload.workers) ||
-      !payload.workers.every(function(worker) {
-        return worker && typeof worker.vendorId === "string" && worker.vendorId &&
-          typeof worker.workerId === "string" && worker.workerId &&
-          typeof worker.vendorName === "string" && typeof worker.workerName === "string" &&
-          typeof worker.quantity === "number" && Number.isFinite(worker.quantity) && worker.quantity > 0;
-      })) return unchanged;
+  try { payload = JSON.parse(optionalString_(raw)); } catch (_) { return null; }
+  return payload && ["days", "hours"].indexOf(payload.unit) !== -1 && Array.isArray(payload.workers) &&
+    payload.workers.every(function(worker) {
+      return worker && typeof worker.vendorId === "string" && worker.vendorId &&
+        typeof worker.workerId === "string" && worker.workerId &&
+        typeof worker.vendorName === "string" && typeof worker.workerName === "string" &&
+        typeof worker.quantity === "number" && Number.isFinite(worker.quantity) && worker.quantity > 0;
+    }) ? payload : null;
+}
+
+/** 整行必須是已知廠商與人員的「姓名×正數+單位」，且只有一種拆法。 */
+function matchesKnownAttendanceWorkerLine_(line, group) {
+  if (!line.startsWith(group.prefix)) return false;
+  const paths = new Map([[group.prefix.length, 1]]);
+  let completed = 0;
+  // 動態規劃不使用姓名分隔正規式，保留姓名內的「、」「：」「×」等字元。
+  for (let start = group.prefix.length; start < line.length; start++) {
+    const count = paths.get(start) || 0;
+    if (!count) continue;
+    group.names.forEach(function(name) {
+      const prefix = name + "×";
+      if (!line.startsWith(prefix, start)) return;
+      const quantityAndUnit = line.slice(start + prefix.length).match(/^((?:0|[1-9]\d*)(?:\.\d+)?)(天|小時|小时|日|時間|일|시간| days?| hours?)(?=、|$)/);
+      if (!quantityAndUnit || !Number.isFinite(Number(quantityAndUnit[1])) || Number(quantityAndUnit[1]) <= 0) return;
+      const end = start + prefix.length + quantityAndUnit[0].length;
+      if (end === line.length) completed = Math.min(2, completed + count);
+      else paths.set(end + 1, Math.min(2, (paths.get(end + 1) || 0) + count));
+    });
+  }
+  return completed === 1;
+}
+
+function splitKnownAttendanceWorkerSuffix_(notes, workerNameIndex) {
+  let end = notes.length;
+  const lines = [], used = new Set();
+  while (end > 0) {
+    const start = notes.lastIndexOf("\n", end - 1) + 1, line = notes.slice(start, end);
+    const matches = (workerNameIndex || []).filter(function(group) { return matchesKnownAttendanceWorkerLine_(line, group); });
+    if (matches.length !== 1 || used.has(matches[0].prefix)) break;
+    used.add(matches[0].prefix);
+    lines.unshift(line);
+    end = start === 0 ? 0 : start - 1;
+  }
+  return {notes: notes.slice(0, end), workers: lines.join("\n")};
+}
+
+/** 優先核對同筆結構化資料；僅缺資料時，才以已知名冊核對完整尾段。 */
+function legacyAttendanceReportFields_(notes, raw, noteHeader, workerNameIndex) {
+  notes = notes == null ? "" : String(notes);
+  const unchanged = {notes: notes, workers: ""};
+  const payload = legacyAttendanceWorkerPayload_(raw);
+  if (!payload) return optionalString_(raw).trim() ? unchanged : splitKnownAttendanceWorkerSuffix_(notes, workerNameIndex);
   const units = {"Note": [" day", " days", " hour", " hours"], "Notes": [" day", " days", " hour", " hours"],
     "備考": ["日", "日", "時間", "時間"], "비고": ["일", "일", "시간", "시간"],
     "备注": ["天", "天", "小时", "小时"]}[noteHeader] || ["天", "天", "小時", "小時"];
@@ -2854,11 +2931,40 @@ function isWorkerAttendanceSheet_(sheet) {
     (sheet.getName() === GCGL_CONFIG.workerAttendanceSheetName || !!workerMonthForSheet_(sheet));
 }
 
-// MARK: - 跨案場施工人員名冊；D/E 欄另外記憶，不回寫 App。
+// MARK: - 跨案場施工廠商及人員；E/F 欄另外記憶，不回寫 App。
 
 function validWorkerDirectoryKey_(key) {
   const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
   return new RegExp("^worker-directory:(company|" + uuid + "):" + uuid + "$", "i").test(optionalString_(key));
+}
+
+function validWorkerDirectoryRecordKey_(key) {
+  return validWorkerDirectoryKey_(key) || /^worker-directory:(company|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):owner$/i.test(optionalString_(key));
+}
+
+function workerDirectoryOwnerID_(key) {
+  return optionalString_(key).split(":")[1] || "";
+}
+
+function workerDirectoryOwnerInfo_(row) {
+  if (row.length < 7 || !row[6]) return {};
+  let info;
+  try { info = JSON.parse(row[6]); } catch (_) { throw new Error("廠商資料格式不正確，請從 App 重新同步。"); }
+  if (!info || typeof info !== "object" || Array.isArray(info) ||
+      ["contactPerson", "phone", "taxID", "address", "notes"].some(function(key) {
+        return info[key] !== undefined && typeof info[key] !== "string";
+      })) throw new Error("廠商資料格式不正確，請從 App 重新同步。");
+  return info;
+}
+
+function workerDirectoryDescription_(row, key) {
+  const info = workerDirectoryOwnerInfo_(row);
+  const fields = workerDirectoryOwnerID_(key) === "company"
+    ? [["電話", "phone"], ["統編", "taxID"], ["地址", "address"], ["備註", "notes"]]
+    : [["負責人", "contactPerson"], ["電話", "phone"], ["統編", "taxID"], ["地址", "address"]];
+  return fields.map(function(field) {
+    return reportText_(field[0]) + "：" + optionalString_(info[field[1]]);
+  }).join("\n");
 }
 
 function isWorkerDirectorySheet_(sheet) {
@@ -2874,11 +2980,17 @@ function workerDirectorySheet_(spreadsheet) {
 /** 辨識目前第 3 列及舊版第 4／1 列，移轉時先保存原輸入。 */
 function workerDirectoryLayout_(sheet) {
   if (!isWorkerDirectorySheet_(sheet)) return null;
-  const headerRow = [3, 4, 1].find(function(row) {
-    return sheet.getMaxRows() >= row &&
-      sheet.getRange(row, 9).getValue() === GCGL_CONFIG.workerDirectoryKeyHeader;
-  });
-  return headerRow ? {headerRow: headerRow, firstDataRow: headerRow + 1} : null;
+  for (const headerRow of [3, 4, 1]) {
+    if (sheet.getMaxRows() < headerRow) continue;
+    for (const keyColumn of [10, 9]) {
+      if (sheet.getMaxColumns() >= keyColumn &&
+          sheet.getRange(headerRow, keyColumn).getValue() === GCGL_CONFIG.workerDirectoryKeyHeader) {
+        return {headerRow: headerRow, firstDataRow: headerRow + 1, keyColumn: keyColumn,
+          identityColumn: keyColumn - 5, visibleColumns: keyColumn - 1};
+      }
+    }
+  }
+  return null;
 }
 
 function readWorkerDirectoryDetails_(spreadsheet) {
@@ -2910,16 +3022,17 @@ function captureWorkerDirectoryDetails_(spreadsheet) {
     const byId = Object.create(null);
     rows.forEach(function(row, index) { byId[row[0]] = index; });
     let changed = false;
-    sheet.getRange(layout.firstDataRow, 1, sheet.getLastRow() - layout.firstDataRow + 1, 9).getDisplayValues().forEach(function(row) {
-      if (!validWorkerDirectoryKey_(row[8])) return;
-      const identity = optionalString_(row[3]) === "未提供" ? "" : optionalString_(row[3]);
-      const address = optionalString_(row[4]) === "未提供" ? "" : optionalString_(row[4]);
-      const existing = byId[row[8]] === undefined ? null : rows[byId[row[8]]];
+    sheet.getRange(layout.firstDataRow, 1, sheet.getLastRow() - layout.firstDataRow + 1, layout.keyColumn).getDisplayValues().forEach(function(row) {
+      const key = row[layout.keyColumn - 1];
+      if (!validWorkerDirectoryKey_(key)) return;
+      const identity = optionalString_(row[layout.identityColumn - 1]) === "未提供" ? "" : rememberedInputValue_(optionalString_(row[layout.identityColumn - 1]), "請填入資料");
+      const address = optionalString_(row[layout.identityColumn]) === "未提供" ? "" : rememberedInputValue_(optionalString_(row[layout.identityColumn]), "請填入資料");
+      const existing = byId[key] === undefined ? null : rows[byId[key]];
       if (existing && existing[1] === identity && existing[2] === address) return;
       if (!existing && !identity && !address) return;
-      const entry = [row[8], identity, address];
-      if (existing) rows[byId[row[8]]] = entry;
-      else { byId[row[8]] = rows.length; rows.push(entry); }
+      const entry = [key, identity, address];
+      if (existing) rows[byId[key]] = entry;
+      else { byId[key] = rows.length; rows.push(entry); }
       changed = true;
     });
     if (!changed) return;
@@ -2940,8 +3053,26 @@ function handleWorkerDirectoryEdit_(event) {
   if (!isWorkerDirectorySheet_(sheet)) return false;
   const layout = workerDirectoryLayout_(sheet);
   if (layout && event.range.getRow() + event.range.getNumRows() > layout.firstDataRow &&
-      event.range.getColumn() <= 5 && event.range.getColumn() + event.range.getNumColumns() > 4) {
+      event.range.getColumn() < layout.identityColumn + 2 &&
+      event.range.getColumn() + event.range.getNumColumns() > layout.identityColumn) {
     captureWorkerDirectoryDetails_(sheet.getParent());
+    restoreEditedInputPrompt_(event.range, layout.firstDataRow, layout.identityColumn, 2, layout.keyColumn, validWorkerDirectoryKey_, "請填入資料");
+  }
+  if (layout && event.range.getColumn() <= layout.visibleColumns) {
+    const lastDataRow = sheet.getLastRow();
+    let firstRow = Math.max(layout.firstDataRow, event.range.getRow());
+    let lastRow = Math.min(lastDataRow, event.range.getRow() + event.range.getNumRows() - 1);
+    if (firstRow <= lastRow) {
+      // 廠商名稱及說明一起合併；包含整組才能同時滿足說明與各人員的內容高度。
+      sheet.getRange(firstRow, 1, lastRow - firstRow + 1, layout.keyColumn === 10 ? 2 : 1).getMergedRanges().forEach(function(merged) {
+        const endRow = merged.getRow() + merged.getNumRows() - 1;
+        if (merged.getRow() >= layout.firstDataRow && endRow <= lastDataRow) {
+          firstRow = Math.min(firstRow, merged.getRow());
+          lastRow = Math.max(lastRow, endRow);
+        }
+      });
+      fitReportRowHeights_(sheet, firstRow, lastRow - firstRow + 1, 1, layout.visibleColumns, false, false);
+    }
   }
   return true;
 }
@@ -2949,7 +3080,18 @@ function handleWorkerDirectoryEdit_(event) {
 function workerDirectoryInputRanges_(sheet) {
   const layout = workerDirectoryLayout_(sheet);
   if (!layout || sheet.getLastRow() < layout.firstDataRow) return [];
-  return [sheet.getRange(layout.firstDataRow, 4, sheet.getLastRow() - layout.firstDataRow + 1, 2)];
+  const keys = sheet.getRange(layout.firstDataRow, layout.keyColumn, sheet.getLastRow() - layout.firstDataRow + 1, 1).getValues();
+  const ranges = [];
+  let start = -1;
+  for (let index = 0; index <= keys.length; index++) {
+    if (index < keys.length && validWorkerDirectoryKey_(keys[index][0])) {
+      if (start === -1) start = index;
+    } else if (start !== -1) {
+      ranges.push(sheet.getRange(layout.firstDataRow + start, layout.identityColumn, index - start, 2));
+      start = -1;
+    }
+  }
+  return ranges;
 }
 
 function workerDirectoryLiteral_(value) {
@@ -2979,61 +3121,67 @@ function buildExpiredWorkerDirectorySummary_(spreadsheet, values) {
 function renderWorkerDirectoryReport_(spreadsheet, table, values, recordIds, tables, valuesByKey, idsByKey) {
   let sheet = workerDirectorySheet_(spreadsheet);
   const named = spreadsheet.getSheetByName(GCGL_CONFIG.workerDirectorySheetName);
-  if (!sheet && named) {
-    // 舊合併出工表先保存工資、建立月份表；不得把它當成新名冊直接清空。
-    if (workerWageLayouts_(named).length ||
-        named.getRange(3, 1).getValue() === "尚無施工人員出勤記錄") {
+  if (named && (!sheet || named.getSheetId() !== sheet.getSheetId())) {
+    throw new Error("「施工廠商及人員」已存在且尚未登記為 GCGL 名冊，請先將自訂分頁更名。");
+  }
+  if (!sheet) {
+    // 舊合併出工表仍叫施工人員；先保留工資並移轉，不接管同名的自訂名冊。
+    const legacy = spreadsheet.getSheetByName(GCGL_CONFIG.workerAttendanceSheetName);
+    if (legacy && (workerWageLayouts_(legacy).length ||
+        legacy.getRange(3, 1).getValue() === "尚無施工人員出勤記錄")) {
       const attendance = tables.find(function(item) { return item.key === "attendance"; });
       if (!attendance) throw new Error("請先從 App 完整同步出勤，再建立施工人員名冊；既有工資已保留。");
       renderWorkerAttendanceReport_(spreadsheet, attendance, valuesByKey.attendance || [], idsByKey.attendance || []);
     }
-    if (spreadsheet.getSheetByName(GCGL_CONFIG.workerDirectorySheetName)) {
-      throw new Error("「施工人員」已存在且尚未登記為 GCGL 名冊，請先將自訂分頁更名。");
-    }
-  }
-  if (!sheet) {
     sheet = spreadsheet.insertSheet(GCGL_CONFIG.workerDirectorySheetName);
     PropertiesService.getScriptProperties().setProperty(GCGL_CONFIG.workerDirectorySheetIdProperty, String(sheet.getSheetId()));
   }
+  // 重建及改名前依舊版 I 欄／新版 J 欄 UUID 保存未觸發 onEdit 的身分證及地址。
   captureWorkerDirectoryDetails_(spreadsheet);
   const details = Object.create(null);
   readWorkerDirectoryDetails_(spreadsheet).forEach(function(row) { details[row[0]] = row.slice(1); });
-  // 照片、PDF 不傳入此表；所有身分／地址都是此試算表內依 UUID 保存的輸入。
   const timezone = spreadsheet.getSpreadsheetTimeZone() || Session.getScriptTimeZone();
   const output = values.map(function(row, index) {
     const key = recordIds[index];
-    if (!validWorkerDirectoryKey_(key)) throw new Error("施工人員缺少穩定識別碼，已停止重建。");
+    if (!validWorkerDirectoryRecordKey_(key)) throw new Error("施工人員缺少穩定識別碼，已停止重建。");
+    const isPerson = validWorkerDirectoryKey_(key);
     const saved = details[key] || ["", ""];
-    const dates = [3, 4, 5].map(function(column) { return workerDirectoryDate_(row[column], timezone)?.date || reportText_("未提供"); });
-    return row.slice(0, 3).concat(saved).map(function(value) {
+    const inputs = isPerson ? saved.map(function(value) { return rememberedInputDisplay_(value, "請填入資料"); }) : ["", ""];
+    const dates = [3, 4, 5].map(function(column) {
+      return isPerson ? workerDirectoryDate_(row[column], timezone)?.date || reportText_("未提供") : "";
+    });
+    return [row[0], workerDirectoryDescription_(row, key), row[1], row[2]].concat(inputs).map(function(value) {
       return workerDirectoryLiteral_(optionalString_(value).trim() ? value : "");
     }).concat(dates, [key]);
   });
-  sheet = prepareReportSheet_(spreadsheet, sheet.getName(), {hiddenColumns: [9, 1], visibleColumns: 8});
-  const headers = ["廠商名稱", "姓名", "電話", "身分證號", "地址", "職安卡到期日", "體檢到期日", "勞保到期日",
+  if (sheet.getName() !== GCGL_CONFIG.workerDirectorySheetName) sheet.setName(GCGL_CONFIG.workerDirectorySheetName);
+  sheet = prepareReportSheet_(spreadsheet, sheet.getName(), {hiddenColumns: [10, 1], visibleColumns: 9});
+  const headers = ["廠商名稱", "說明", "姓名", "電話", "身分證號", "地址", "職安卡到期日", "體檢到期日", "勞保到期日",
     GCGL_CONFIG.workerDirectoryKeyHeader];
   const rows = output.length ? output : [headers.map(function() { return ""; })];
   const headerRow = 3, firstDataRow = 4;
-  ensureSheetSize_(sheet, rows.length + headerRow, 9);
-  sheet.getRange(headerRow, 1, rows.length + 1, 9).setNumberFormat("@");
-  const block = writeReportTableBlock_(sheet, headerRow, 1, headers, rows,
-    [180, 99, 99, 99, 300, 180, 180, 180, 100], ["@", "@", "@", "@", "@", "yyyy/MM/dd", "yyyy/MM/dd", "yyyy/MM/dd", "@"]);
+  ensureSheetSize_(sheet, rows.length + headerRow, 10);
+  sheet.getRange(headerRow, 1, rows.length + 1, 10).setNumberFormat("@");
+  writeReportTableBlock_(sheet, headerRow, 1, headers, rows,
+    [180, 300, 99, 99, 99, 300, 180, 180, 180, 100],
+    ["@", "@", "@", "@", "@", "@", "yyyy/MM/dd", "yyyy/MM/dd", "yyyy/MM/dd", "@"]);
   if (output.length) {
-    sheet.getRange(firstDataRow, 4, output.length, 2).setBackground(GCGL_REPORT_COLORS.rememberedInput);
-    const missing = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=F4="' + reportText_("未提供") + '"')
-      .setFontColor("#D93025").setRanges([sheet.getRange(firstDataRow, 6, output.length, 3)]).build();
-    const expired = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied("=AND(ISNUMBER(F4),F4<=TODAY())")
-      .setBackground(GCGL_REPORT_COLORS.lightRed3).setRanges([sheet.getRange(firstDataRow, 6, output.length, 3)]).build();
+    workerDirectoryInputRanges_(sheet).forEach(function(range) { range.setBackground(GCGL_REPORT_COLORS.rememberedInput); });
+    const missing = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=G4="' + reportText_("未提供") + '"')
+      .setFontColor("#D93025").setRanges([sheet.getRange(firstDataRow, 7, output.length, 3)]).build();
+    const expired = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied("=AND(ISNUMBER(G4),G4<=TODAY())")
+      .setBackground(GCGL_REPORT_COLORS.lightRed3).setRanges([sheet.getRange(firstDataRow, 7, output.length, 3)]).build();
     sheet.setConditionalFormatRules([missing, expired]);
   }
-  sheet.getRange(2, 4, 1, 2).setValues([[reportText_("請填入資料"), reportText_("請填入資料")]])
-    .setFontFamily("Arial").setFontSize(10).setFontColor(GCGL_REPORT_COLORS.red)
-    .setHorizontalAlignment("left").setWrap(true);
+  setRememberedInputPromptFormat_(sheet, output.length, 2, "請填入資料", 5);
   sheet.setRowHeights(1, 2, 21);
   sheet.setRowHeight(2, 28);
-  createReportFilter_(sheet, headerRow, 1, block); // 隱藏的 UUID 也隨原生排序移動。
+  // 同名不同 UUID 不合併；說明與名稱依同一個公司／廠商分組。
+  const mergeRows = output.map(function(row) { return row.concat([workerDirectoryOwnerID_(row[9])]); });
+  mergeReportLabelColumn_(sheet, mergeRows, 0, [10], firstDataRow);
+  mergeReportLabelColumn_(sheet, mergeRows, 1, [10], firstDataRow);
   sheet.setFrozenRows(headerRow);
-  fitReportRowHeights_(sheet, headerRow, rows.length + 1, 1, 8);
+  fitReportRowHeights_(sheet, headerRow, rows.length + 1, 1, 9, false);
   protectGCGLSheet_(sheet, workerDirectoryInputRanges_(sheet));
 }
 
@@ -3374,6 +3522,69 @@ function materialCatalogLayout_(sheet) {
   return headerRow ? {headerRow: headerRow, firstDataRow: headerRow + 1} : null;
 }
 
+/** 提示只代表未填；接受所有報表語言，避免切換語言後把提示保存成內容。 */
+function rememberedInputLabels_(label) {
+  return uniqueStrings_([label].concat(GCGL_REPORT_TRANSLATIONS[label] || []));
+}
+
+function rememberedInputValue_(value, label) {
+  return value == null || (typeof value === "string" && (!value.trim() || rememberedInputLabels_(label).indexOf(value) !== -1)) ? "" : value;
+}
+
+function rememberedInputDisplay_(value, label) {
+  const saved = rememberedInputValue_(value, label);
+  return saved === "" ? reportText_(label) : saved;
+}
+
+/** 只替換本功能的規則；實際輸入後由原生條件格式立即恢復原字色。 */
+function setRememberedInputPromptFormat_(sheet, rowCount, columnCount, label, firstColumn) {
+  firstColumn = firstColumn || 4;
+  const cell = reportColumnLetter_(firstColumn) + "4";
+  const formula = "=OR(" + rememberedInputLabels_(label).map(function(text) {
+    return cell + '="' + text.replace(/"/g, '""') + '"';
+  }).join(",") + ")";
+  const rules = sheet.getConditionalFormatRules().filter(function(rule) {
+    const condition = rule.getBooleanCondition();
+    return !(condition && condition.getCriteriaValues()[0] === formula && rule.getRanges().every(function(range) {
+      return range.getRow() === 4 && range.getColumn() === firstColumn && range.getNumColumns() <= 2;
+    }));
+  });
+  if (rowCount > 0) rules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(formula)
+    .setFontColor(GCGL_REPORT_COLORS.lightRed3).setRanges([sheet.getRange(4, firstColumn, rowCount, columnCount)]).build());
+  sheet.setConditionalFormatRules(rules);
+}
+
+/** 僅補回使用者編輯範圍內的空白輸入；不覆寫其他內容或沒有穩定識別的空列。 */
+function restoreEditedInputPrompt_(range, firstDataRow, firstColumn, columnCount, keyColumn, validKey, label) {
+  const sheet = range.getSheet(), first = Math.max(firstDataRow, range.getRow());
+  const last = Math.min(sheet.getLastRow(), range.getRow() + range.getNumRows() - 1);
+  const left = Math.max(firstColumn, range.getColumn()), right = Math.min(firstColumn + columnCount - 1, range.getColumn() + range.getNumColumns() - 1);
+  if (first > last || left > right) return;
+  const keys = sheet.getRange(first, keyColumn, last - first + 1, 1).getValues();
+  for (let column = left; column <= right; column++) {
+    const values = sheet.getRange(first, column, last - first + 1, 1).getValues();
+    let start = -1;
+    for (let index = 0; index <= values.length; index++) {
+      const replace = index < values.length && validKey(keys[index][0]) &&
+        rememberedInputValue_(values[index][0], label) === "" && values[index][0] !== reportText_(label);
+      if (replace && start < 0) start = index;
+      if (!replace && start >= 0) {
+        sheet.getRange(first + start, column, index - start, 1).setValues(Array.from({length: index - start}, function() { return [reportText_(label)]; }));
+        start = -1;
+      }
+    }
+  }
+}
+
+function handleMaterialCatalogPriceEdit_(event) {
+  const sheet = event.range.getSheet();
+  const table = loadTableSchemas_().find(function(item) { return item.key === "material_catalog" && item.sheetName === sheet.getName(); });
+  if (!table) return false;
+  const layout = materialCatalogLayout_(sheet);
+  if (layout) restoreEditedInputPrompt_(event.range, layout.firstDataRow, 4, 1, 1, function(key) { return !!optionalString_(key); }, "請填入單價");
+  return true;
+}
+
 function renderMaterialCatalogReport_(spreadsheet, table, values, recordIds) {
   let sheet = spreadsheet.getSheetByName(table.sheetName);
   if (!sheet) sheet = spreadsheet.insertSheet(table.sheetName);
@@ -3388,7 +3599,9 @@ function renderMaterialCatalogReport_(spreadsheet, table, values, recordIds) {
   if (oldDataRowCount > 0 && sheet.getMaxColumns() >= 4) {
     existingRows = sheet.getRange(oldLayout.firstDataRow, 1, oldDataRowCount, 4).getValues();
   }
-  const outputRows = mergeMaterialCatalogRows_(values, recordIds, existingRows);
+  const outputRows = mergeMaterialCatalogRows_(values, recordIds, existingRows).map(function(row) {
+    return row.slice(0, 3).concat([rememberedInputDisplay_(row[3], "請填入單價")]);
+  });
 
   // 用原生增刪前置列搬移整張表；後續寫入失敗時，原 UUID／單價仍保留在資料列。
   const headerRow = 3, firstDataRow = 4;
@@ -3433,7 +3646,9 @@ function renderMaterialCatalogReport_(spreadsheet, table, values, recordIds) {
       .setHorizontalAlignment("right")
       .setDataValidation(
         SpreadsheetApp.newDataValidation()
-          .requireNumberGreaterThanOrEqualTo(0)
+          .requireFormulaSatisfied('=OR(D4="",AND(ISNUMBER(D4),D4>=0),' + rememberedInputLabels_("請填入單價").map(function(text) {
+            return 'D4="' + text.replace(/"/g, '""') + '"';
+          }).join(",") + ')')
           .setAllowInvalid(true)
           .setHelpText(reportText_("請輸入材料單價。"))
           .build()
@@ -3466,9 +3681,7 @@ function renderMaterialCatalogReport_(spreadsheet, table, values, recordIds) {
   }
 
   sheet.getRange(1, 1, 2, managedColumnCount).clearContent();
-  sheet.getRange(2, 4).setValue(reportText_("請填入單價"))
-    .setFontFamily("Arial").setFontSize(10).setFontColor(GCGL_REPORT_COLORS.red)
-    .setHorizontalAlignment("left").setWrap(true);
+  setRememberedInputPromptFormat_(sheet, outputRows.length, 1, "請填入單價");
   sheet.getRange(headerRow, 4).setNote(reportText_("請在此欄輸入材料單價；同步不會清除或移動既有品項的單價。"));
   sheet.setColumnWidth(1, 180);
   sheet.setColumnWidth(2, 150);
@@ -3490,7 +3703,7 @@ function mergeMaterialCatalogRows_(values, recordIds, existingRows) {
   (existingRows || []).forEach(function(row) {
     const recordId = optionalString_(row[0]);
     if (!recordId || Object.prototype.hasOwnProperty.call(existingPrices, recordId)) return;
-    existingPrices[recordId] = row[3];
+    existingPrices[recordId] = rememberedInputValue_(row[3], "請填入單價");
     existingOrder.push(recordId);
   });
 
@@ -3535,16 +3748,18 @@ function renderMaterialCostReport_(spreadsheet, table, values, siteNames, priceS
     identities = selectedRows.indexes.map(function(index) { return identities[index]; });
     values = selectedRows.values;
   }
+  const isSummary = table.key === "material_summary";
   const sheet = prepareReportSheet_(spreadsheet, table.sheetName, {
-    hiddenColumns: [table.headers.length + 3, 2], visibleColumns: table.headers.length + 2
+    hiddenColumns: [table.headers.length + 3, isSummary ? 3 : 2], visibleColumns: table.headers.length + 2
   });
   const headers = table.headers.concat(["單價", "小計",
-    GCGL_CONFIG.materialPriceKeyHeader, GCGL_CONFIG.materialCatalogIdHeader]);
-  const widths = (table.widths || []).concat([110, 130, 180, 180]);
-  const formats = (table.formats || []).concat(["#,##0.##", "#,##0.##", "@", "@"]);
+    GCGL_CONFIG.materialPriceKeyHeader, GCGL_CONFIG.materialCatalogIdHeader],
+    isSummary ? [GCGL_CONFIG.materialSiteNameHeader] : []);
+  const widths = (table.widths || []).concat([110, 130, 180, 180], isSummary ? [180] : []);
+  const formats = (table.formats || []).concat(["#,##0.##", "#,##0.##", "@", "@"], isSummary ? ["@"] : []);
   const bodyRows = values.length > 0
     ? reportDisplayRows_(table, values).map(function(row, index) {
-        return row.concat(["", "", identities[index].key, identities[index].catalogId]);
+        return row.concat(["", "", identities[index].key, identities[index].catalogId], isSummary ? [values[index][0]] : []);
       })
     : [headers.map(function() { return ""; })];
   const tableBlock = writeReportTableBlock_(
@@ -3584,6 +3799,8 @@ function renderMaterialCostReport_(spreadsheet, table, values, siteNames, priceS
 
   if (usesMergedRecordLayout_(table)) {
     mergeReportRecordCells_(sheet, table, values, selectedRows.recordIds, 4);
+  } else if (isSummary) {
+    mergeReportLabelColumn_(sheet, values, 0, [], 4);
   } else {
     createReportFilter_(sheet, 3, 1, tableBlock);
   }
@@ -3746,8 +3963,11 @@ function materialReportPriceFormula_(table, row, priceSheetName, summaryTable) {
   const criterion = materialPriceCriterion_(key);
   const catalog = quoteSheetNameForFormula_(priceSheetName);
   const saved = quoteSheetNameForFormula_(GCGL_CONFIG.materialPricesSheetName);
+  const placeholderExclusions = rememberedInputLabels_("請填入單價").map(function(text) {
+    return ',' + catalog + '!$D:$D,"<>' + text.replace(/"/g, '""') + '"';
+  }).join("");
   const defaults = 'IF(' + catalogId + '="","",IF(COUNTIFS(' + catalog + '!$A:$A,' +
-    catalogId + ',' + catalog + '!$D:$D,"<>")=0,"",SUMIFS(' + catalog + '!$D:$D,' + catalog + '!$A:$A,' + catalogId + ')))';
+    catalogId + ',' + catalog + '!$D:$D,"<>"' + placeholderExclusions + ')=0,"",SUMIFS(' + catalog + '!$D:$D,' + catalog + '!$A:$A,' + catalogId + ')))';
   let formula = 'IF(COUNTIFS(' + saved + '!$A:$A,' + criterion + ',' + saved + '!$E:$E,"<>")=0,' +
     defaults + ',SUMIFS(' + saved + '!$E:$E,' + saved + '!$A:$A,' + criterion + '))';
   if (table.key === "material_orders" && summaryTable) {
@@ -3851,6 +4071,7 @@ function reportColumnLetter_(columnNumber) {
 
 /** 同案場、工項、廠商的相鄰樓層共用前三欄；樓層及各自進度仍逐列保留。 */
 function mergeConstructionProgressCells_(sheet, values, firstRow) {
+  mergeReportLabelColumn_(sheet, values, 0, [], firstRow);
   let start = 0;
   for (let index = 1; index <= values.length; index++) {
     const group = values[start].slice(0, 3);
@@ -3860,7 +4081,7 @@ function mergeConstructionProgressCells_(sheet, values, firstRow) {
     });
     if (sameGroup) continue;
     if (hasGroup && index - start > 1) {
-      for (let column = 1; column <= 3; column++) {
+      for (let column = 2; column <= 3; column++) {
         sheet.getRange(firstRow + start, column, index - start, 1).merge()
           .setVerticalAlignment("middle")
           .setBorder(true, true, true, true, false, false, GCGL_REPORT_COLORS.border, SpreadsheetApp.BorderStyle.SOLID);
@@ -3872,8 +4093,8 @@ function mergeConstructionProgressCells_(sheet, values, firstRow) {
 
 
 function usesMergedRecordLayout_(table) {
-  // 簡化的舊版欄位不套用新版合併，避免把品項或數量當作共用表頭。
-  return (table.key === "pricing_detail" && table.headers.length >= 14) ||
+  // 工程記錄／訂單／施工進度仍需完整欄位；計價及備忘錄可安全合併共用標籤。
+  return table.key === "pricing_progress" || table.key === "pricing_detail" || table.key === "memos" ||
     (table.key === "work_logs" && table.headers.length >= 9) ||
     (table.key === "material_orders" && table.headers.length >= 7) ||
     (table.key === "construction_progress" && table.headers.length >= 7);
@@ -3898,13 +4119,45 @@ function reportRecordGroupID_(tableKey, recordId) {
   return match ? match[1] : "";
 }
 
-/** 只合併相鄰且同記錄 ID 的共用文字欄；明細與金額一律保留逐列資料。 */
-function mergeReportRecordCells_(sheet, table, values, recordIds, firstRow) {
+/** 只合併相鄰且同群組的標籤；空白不承接上一列，明細、識別鍵及輸入格不合併。 */
+function mergeReportLabelColumn_(sheet, values, columnIndex, parentColumns, firstRow) {
+  let start = 0;
+  const columns = parentColumns.concat([columnIndex]);
+  for (let index = 1; index <= values.length; index++) {
+    const hasLabel = optionalString_(values[start][columnIndex]).trim() !== "";
+    if (index < values.length && hasLabel && columns.every(function(column) {
+      return sameReportText_(values[start][column], values[index][column]);
+    })) continue;
+    if (hasLabel && index - start > 1) {
+      sheet.getRange(firstRow + start, columnIndex + 1, index - start, 1).merge()
+        .setVerticalAlignment("middle")
+        .setBorder(true, true, true, true, false, false, GCGL_REPORT_COLORS.border, SpreadsheetApp.BorderStyle.SOLID);
+    }
+    start = index;
+  }
+}
+
+/** 共用標籤可跨記錄合併；計價總額與其他表頭仍只在同記錄 ID 內合併。 */
+function mergeReportRecordCells_(sheet, table, values, recordIds, firstRow, dateKeys) {
   if (table.key === "construction_progress") {
     mergeConstructionProgressCells_(sheet, values, firstRow);
     return;
   }
+  if (table.key === "memos") {
+    mergeReportLabelColumn_(sheet, values, 0, [], firstRow);
+    mergeReportLabelColumn_(sheet, values, 1, [0], firstRow);
+    return;
+  }
+  if (table.key === "pricing_progress" || table.key === "pricing_detail") {
+    mergeReportLabelColumn_(sheet, values, 0, [], firstRow);
+    if (table.key === "pricing_progress" || table.headers.length < 14) return;
+  }
+  if (table.key === "work_logs") {
+    const dateValues = dateKeys ? values.map(function(row, index) { return [dateKeys[index]]; }) : values;
+    mergeReportLabelColumn_(sheet, dateValues, 0, [], firstRow);
+  }
   const columnCount = table.key === "pricing_detail" ? 6 : 2;
+  const firstColumn = table.key === "material_orders" ? 1 : 2;
   let start = 0;
   for (let index = 1; index <= values.length; index++) {
     const group = reportRecordGroupID_(table.key, recordIds[start]);
@@ -3915,7 +4168,7 @@ function mergeReportRecordCells_(sheet, table, values, recordIds, firstRow) {
       });
     if (sameGroup) continue;
     if (group && index - start > 1) {
-      for (let column = 1; column <= columnCount; column++) {
+      for (let column = firstColumn; column <= columnCount; column++) {
         sheet.getRange(firstRow + start, column, index - start, 1).merge()
           .setVerticalAlignment("middle")
           .setBorder(true, true, true, true, false, false, GCGL_REPORT_COLORS.border, SpreadsheetApp.BorderStyle.SOLID);
@@ -3991,7 +4244,8 @@ function chronologicalWorkLogRows_(spreadsheet, table, values, recordIds) {
     return left.group - right.group || left.index - right.index;
   });
   return {values: rows.map(function(item) { return item.row; }),
-    recordIds: rows.map(function(item) { return item.id; })};
+    recordIds: rows.map(function(item) { return item.id; }),
+    dateKeys: rows.map(function(item) { return item.date || "unknown-row:" + item.index; })};
 }
 
 /** 擁有者仍可確認警告後編輯；以 App 同步來源還原，不保留表格端的獨立完成狀態。 */
@@ -4073,10 +4327,12 @@ function configureMemoCheckboxes_(sheet, rows, tableBlock) {
 }
 
 function renderFlatReport_(spreadsheet, table, values, siteNames, recordIds) {
+  let dateKeys;
   if (table.key === "work_logs") {
     const ordered = chronologicalWorkLogRows_(spreadsheet, table, values, recordIds);
     values = ordered.values;
     recordIds = ordered.recordIds;
+    dateKeys = ordered.dateKeys;
   }
   const sheetName = reportSheetName_(table);
   const isPricingReport = ["pricing_progress", "pricing_detail"].indexOf(table.key) !== -1;
@@ -4085,12 +4341,13 @@ function renderFlatReport_(spreadsheet, table, values, siteNames, recordIds) {
     if (table.key === "work_logs") previousNames.push(GCGL_CONFIG.previousWorkLogReportSheetName);
     migrateReadableReportSheet_(spreadsheet, sheetName, previousNames);
   }
-  const memoRows = table.key === "memos"
-    ? memoCheckboxRows_(values, recordIds) : [];
+  const selectedSite = selectedSiteForReport_(table.key, siteNames);
+  const memoSource = table.key === "memos" ? selectReportRows_(table, values, recordIds || [], selectedSite) : null;
+  const memoRows = memoSource ? memoCheckboxRows_(memoSource.values, memoSource.recordIds) : [];
   const sheet = prepareReportSheet_(spreadsheet, sheetName,
     table.key === "memos" ? {hiddenColumns: [5, 2], visibleColumns: 4} : undefined);
-  // 舊合併計價表以 hideRows 篩選；拆開後清除殘留的列隱藏，改用原生 Filter。
-  if (isPricingReport) sheet.showRows(1, sheet.getMaxRows());
+  // A1 以來源重畫合併報表，不沿用舊版或上次顯示列的隱藏位置。
+  if (usesMergedRecordLayout_(table)) sheet.showRows(1, sheet.getMaxRows());
   // 未完成內容只供總覽計算，不出現在使用者閱讀的備忘錄表格。
   let visibleTable = table, visibleValues = values;
   ["__pending_memo_content", GCGL_CONFIG.workDateKeyHeader].forEach(function(header) {
@@ -4120,8 +4377,8 @@ function renderFlatReport_(spreadsheet, table, values, siteNames, recordIds) {
       return [row.date, row.site, row.content, row.checked];
     });
   }
-  const selectedSite = selectedSiteForReport_(table.key, siteNames);
-  const selectedRows = selectReportRows_(table, reportValues, recordIds || [], selectedSite);
+  const selectedRows = selectReportRows_(table, reportValues,
+    table.key === "memos" ? memoRows.map(function(row) { return row.key; }) : recordIds || [], selectedSite);
   if (usesMergedRecordLayout_(table)) reportValues = selectedRows.values;
   const bodyRows = reportValues.length > 0
     ? reportValues
@@ -4143,7 +4400,10 @@ function renderFlatReport_(spreadsheet, table, values, siteNames, recordIds) {
   }
   if (table.key === "memos") configureMemoCheckboxes_(sheet, memoRows, tableBlock);
   if (usesMergedRecordLayout_(table)) {
-    mergeReportRecordCells_(sheet, table, reportValues, selectedRows.recordIds, 4);
+    mergeReportRecordCells_(sheet, table, reportValues, selectedRows.recordIds, 4,
+      dateKeys && selectedRows.indexes.map(function(index) { return dateKeys[index]; }));
+  } else if (table.key === "material_summary") {
+    mergeReportLabelColumn_(sheet, reportValues, 0, [], 4);
   } else {
     createReportFilter_(sheet, 3, 1, tableBlock);
   }
@@ -4177,6 +4437,7 @@ function reportSheetName_(table) {
   if (table.key === "pricing_progress") return GCGL_CONFIG.pricingStatisticsSheetName;
   if (table.key === "pricing_detail") return GCGL_CONFIG.defaultSheetNames.pricing_detail;
   if (table.key === "work_logs") return GCGL_CONFIG.workLogReportSheetName;
+  if (table.key === "worker_directory") return GCGL_CONFIG.workerDirectorySheetName;
   return table.sheetName;
 }
 
@@ -4278,6 +4539,28 @@ function renderReportSelectors_(sheet, selectedSite, siteNames, firstColumnWidth
 }
 
 function applyReportSiteFilter_(sheet, table, selectedSite) {
+  if (table.key === "material_summary") {
+    // 保留所有案場列供總覽公式與訂單查價；只隱藏未選案場，不刪除計算資料。
+    sheet.showRows(4, sheet.getMaxRows() - 3);
+    const count = sheet.getLastRow() - 3;
+    if (count <= 0 || !selectedSite || selectedSite === GCGL_CONFIG.allSitesLabel) return;
+    const hasSiteCopy = sheet.getRange(3, table.headers.length + 5).getValue() === GCGL_CONFIG.materialSiteNameHeader;
+    const sites = sheet.getRange(4, hasSiteCopy ? table.headers.length + 5 : 1, count, 1).getValues();
+    if (!hasSiteCopy) {
+      sheet.getRange(4, 1, count, 1).getMergedRanges().forEach(function(range) {
+        const first = range.getRow() - 4;
+        for (let offset = 1; offset < range.getNumRows(); offset++) sites[first + offset] = sites[first].slice();
+      });
+    }
+    let start = 0;
+    for (let index = 1; index <= sites.length; index++) {
+      const hide = !sameReportText_(sites[start][0], selectedSite);
+      if (index < sites.length && hide === !sameReportText_(sites[index][0], selectedSite)) continue;
+      if (hide) sheet.hideRows(4 + start, index - start);
+      start = index;
+    }
+    return;
+  }
   const filter = sheet.getFilter();
   if (!filter) return;
   const siteIndex = reportSiteColumnIndex_(table.key);
