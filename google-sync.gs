@@ -1,4 +1,4 @@
-// Version: 3.7
+// Version: 3.8
 
 const GCGL_CONFIG = Object.freeze({
   schemaVersion: 1,
@@ -1983,6 +1983,7 @@ function renderSiteOverviewReport_(spreadsheet, table, valuesByKey, recordIdsByK
   const sheet = prepareReportSheet_(spreadsheet, table.sheetName, {
     hiddenColumns: monthlySourceWidth > 0 ? [monthlySourceColumn, monthlySourceWidth] : null
   });
+  removeLegacySiteMonthlyProgressImages_(sheet);
   const frames = [];
   function frame(range, internal, color, style) {
     const args = [true, true, true, true, internal, internal,
@@ -2453,6 +2454,13 @@ function attendanceReportDateValue_(value, raw, timezone) {
   const keys = attendanceDateKeys_(value, raw, timezone);
   if (keys.length !== 1) return value;
   return Utilities.parseDate(keys[0], timezone, "yyyy-MM-dd");
+}
+
+/** 舊版進度 PNG 使用此固定標記；不依位置或大小猜測，避免誤刪使用者圖片。 */
+function removeLegacySiteMonthlyProgressImages_(sheet) {
+  sheet.getImages().forEach(function(image) {
+    if (image.getAltTextTitle() === "GCGL_SITE_MONTHLY_PROGRESS") image.remove();
+  });
 }
 
 /** 以總覽右側的隱藏輔助欄作為圖表資料，資料列隨同步重建而更新。 */
