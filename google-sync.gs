@@ -1,4 +1,4 @@
-// Version: 3.8
+// Version: 4.0
 
 const GCGL_CONFIG = Object.freeze({
   schemaVersion: 1,
@@ -389,6 +389,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("GCGL 同步")
     .addItem("初始設定／查看同步密碼", "setupGCGLSyncFromMenu")
+    .addItem("自訂同步密碼", "setGCGLSyncTokenFromMenu")
     .addItem("重建報表版面", "rebuildGCGLReports")
     .addItem("重新產生同步密碼", "rotateGCGLSyncTokenFromMenu")
     .addToUi();
@@ -497,6 +498,43 @@ function setupGCGLSyncFromMenu() {
       "\n\n網頁應用程式網址：\n" + result.webAppUrl +
       "\n\n請把同步密碼與部署後的 /exec 網址填入 App。",
     SpreadsheetApp.getUi().ButtonSet.OK
+  );
+}
+
+/** 自訂同一份試算表共用的同步密碼；不改動報表、資料或部署網址。 */
+function setGCGLSyncToken(token) {
+  const normalized = typeof token === "string" ? token.trim() : "";
+  const length = Array.from(normalized).length;
+  if (length < 6 || length > 16) {
+    throw new Error("同步密碼必須為 6～16 個字元，前後空白會自動移除。");
+  }
+  if (/[\u0000-\u001F\u007F]/.test(normalized)) {
+    throw new Error("同步密碼不可包含換行或控制字元。");
+  }
+  PropertiesService.getScriptProperties().setProperty(GCGL_CONFIG.tokenProperty, normalized);
+  return normalized;
+}
+
+function setGCGLSyncTokenFromMenu() {
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.prompt(
+    "自訂同步密碼",
+    "請輸入 6～16 個字元，可使用中英文、數字及符號。\n" +
+      "修改後舊密碼會立即失效，所有連線到這份試算表的 App 都必須改填相同的新密碼。",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+
+  try {
+    setGCGLSyncToken(response.getResponseText());
+  } catch (error) {
+    ui.alert("同步密碼未更新", error.message || String(error), ui.ButtonSet.OK);
+    return;
+  }
+  ui.alert(
+    "同步密碼已更新",
+    "請在 App 的「Google 試算表同步」填入新密碼，按「測試連線」後儲存。原 /exec 網址不變。",
+    ui.ButtonSet.OK
   );
 }
 
