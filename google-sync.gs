@@ -1,4 +1,4 @@
-// Version: 4.0
+// Version: 4.1
 
 const GCGL_CONFIG = Object.freeze({
   schemaVersion: 1,
@@ -2339,11 +2339,25 @@ function buildPendingCompanyMemoSummary_(memoRows, memoRecordIds, timezone) {
 
 /** 案場未完成事項只顯示於對應案場的今日工程記錄，保留項目原有的換行。 */
 function buildPendingSiteMemoLines_(memoRows, memoRecordIds, siteName, timezone) {
-  const lines = [];
+  const itemsByDate = new Map();
   memoRows.forEach(function(row, index) {
     if (optionalString_(memoRecordIds[index]).indexOf("memo-company:") === 0) return;
     if (!sameReportText_(row[1], siteName)) return;
-    Array.prototype.push.apply(lines, datedPendingMemoItems_(row, timezone, true));
+
+    const items = pendingMemoContent_(row).split(/\n(?=○ )/).map(function(item) {
+      const text = item.trim();
+      return text ? "○ " + text.replace(/^○\s*/, "") : "";
+    }).filter(Boolean);
+    if (!items.length) return;
+
+    const date = pendingMemoDateText_(row[0], timezone);
+    if (!itemsByDate.has(date)) itemsByDate.set(date, []);
+    itemsByDate.get(date).push(...items);
+  });
+  const lines = [];
+  itemsByDate.forEach(function(items, date) {
+    if (date) lines.push(date);
+    lines.push(...items);
   });
   return lines;
 }
