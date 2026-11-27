@@ -1,4 +1,4 @@
-// Version: 4.5
+// Version: 4.8
 
 const GCGL_CONFIG = Object.freeze({
   schemaVersion: 1,
