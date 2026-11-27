@@ -1,4 +1,4 @@
-// Version: 4.2
+// Version: 4.5
 
 const GCGL_CONFIG = Object.freeze({
   schemaVersion: 1,
@@ -128,6 +128,9 @@ const GCGL_REPORT_COLORS = Object.freeze({
   overviewBorder: "#CCD6E0",
   lightRed1: "#EA9999",
   lightRed3: "#F4CCCC",
+  lightOrange3: "#FCE5CD",
+  darkRedBerry1: "#A61C00",
+  ganttToday: "#FFFF00",
   rememberedInput: "#FFF4CC",
   text: "#263238"
 });
@@ -225,7 +228,6 @@ const GCGL_REPORT_TRANSLATIONS = Object.freeze({
   "最後記錄日": ["最后记录日期", "最終記録日", "Last Record Date", "최종 기록일"],
   "無記錄日期": ["无记录日期", "記録日なし", "No recorded date", "기록 날짜 없음"],
   "未開始／無記錄日期": ["未开始／无记录日期", "未着手／記録日なし", "Not started or no recorded date", "미시작／기록 날짜 없음"],
-  "首次至最後一次施工記錄": ["首次至最后一次施工记录", "最初から最後までの工事記録", "First to last work log", "최초~최종 공사 기록"],
   "僅能確認最後記錄日": ["仅能确认最后记录日期", "最終記録日のみ確認済み", "Only the last record date is known", "최종 기록일만 확인됨"],
   "每週": ["每周", "週別", "Weekly", "주별"],
   "每月": ["每月", "月別", "Monthly", "월별"],
@@ -1051,7 +1053,7 @@ function archiveAndRemoveRetiredReports_(spreadsheet, tables, replacements, appr
   return result;
 }
 
-/** 每日跨日後只排入總覽更新；不寫入原始資料，也不變更最後同步時間。 */
+/** 跨日後排入總覽與甘特圖更新；同步資料與最後同步時間不變。 */
 function refreshGCGLDailyOverview() {
   // 與 App 寫入共用短鎖，避免覆蓋其他尚待重建的分頁清單。
   // 實際報表仍由原有單次工作處理，不在這裡持鎖重建。
@@ -1059,11 +1061,11 @@ function refreshGCGLDailyOverview() {
   lock.waitLock(30000);
   try {
     if (!isConfigured_()) return;
-    const hasOverview = loadTableSchemas_().some(function(table) {
-      return table.key === "site_overview";
+    const configuredTables = new Set(loadTableSchemas_().map(function(table) { return table.key; }));
+    const reports = ["site_overview", "construction_progress"].filter(function(key) {
+      return configuredTables.has(key);
     });
-    if (!hasOverview) return;
-    markReportsPending_(["site_overview"], true);
+    if (reports.length) markReportsPending_(reports, true);
   } finally {
     lock.releaseLock();
   }
@@ -5069,7 +5071,7 @@ function constructionGanttFloors_(summary, known) {
 }
 
 /** 先索引工項，再掃工程記錄。若最後日期和可對應的記錄不吻合，僅畫已知日期。 */
-function constructionGanttRows_(table, values, logs, timezone) {
+function constructionGanttRows_(table, values, logs, timezone, today) {
   const fields = constructionGanttFields_(table, ["案場", "工項", "施工廠商", "樓層/區域", "狀態", "最後記錄日"]);
   const groups = new Map();
   const keyFor = function(site, task, vendor) { return JSON.stringify([site, task, vendor]); };
@@ -5079,7 +5081,7 @@ function constructionGanttRows_(table, values, logs, timezone) {
     const key = keyFor(names[0], names[1], names[2]);
     if (!groups.has(key)) groups.set(key, new Map());
     const floors = groups.get(key);
-    if (!floors.has(names[3])) floors.set(names[3], {first: "", last: "", lastIncomplete: "", completed: []});
+    if (!floors.has(names[3])) floors.set(names[3], {first: "", last: "", lastIncomplete: "", completed: [], hasToday: false});
     return {site: names[0], task: names[1], vendor: names[2], floor: names[3],
       stage: reportCanonicalText_(optionalString_(status).trim()), latest: last, dates: floors.get(names[3])};
   });
@@ -5100,6 +5102,7 @@ function constructionGanttRows_(table, values, logs, timezone) {
         const span = group.get(label);
         if (!span.first || date < span.first) span.first = date;
         if (date > span.last) span.last = date;
+        if (date === today) span.hasToday = true;
         if (stage === "已完成") span.completed.push(date);
         else if (["未開始", "準備中", "施工中", "最後階段"].indexOf(stage) !== -1 &&
             date > span.lastIncomplete) span.lastIncomplete = date;
@@ -5112,7 +5115,9 @@ function constructionGanttRows_(table, values, logs, timezone) {
     if (latest.length === 1) row.last = latest[0];
     else row.last = !latest.length || latest.indexOf(row.dates.last) >= 0 ? row.dates.last : "";
     row.first = row.last && row.last === row.dates.last ? row.dates.first : "";
-    let label = reportText_(row.stage);
+    row.hasToday = row.dates.hasToday || (!!today && row.last === today && constructionGanttHasBar_(row));
+    const lastDate = row.last ? constructionGanttShortDate_(row.last) : "";
+    let label;
     if (row.stage === "已完成") {
       // 已完成後仍可能有追加記錄，標籤採最近一次進入完成狀態的日期，而非週起始日或最後一次回報。
       const after = row.dates.lastIncomplete;
@@ -5121,7 +5126,9 @@ function constructionGanttRows_(table, values, logs, timezone) {
       }, "");
       const completionDate = firstCompletion || (row.last > after ? row.last : "");
       label = completionDate ? reportText_("{date}完成").replace("{date}", constructionGanttShortDate_(completionDate))
-        : reportText_("完成日期不明");
+        : reportText_("完成日期不明") + (lastDate ? " · " + reportText_("最後記錄日") + " " + lastDate : "");
+    } else {
+      label = [reportText_(row.stage), lastDate || reportText_("無記錄日期")].filter(Boolean).join(" ");
     }
     row.label = [[row.task, row.floor].filter(Boolean).join(" "), label].filter(Boolean).join(" · ");
     return row;
@@ -5136,12 +5143,12 @@ function constructionGanttHasBar_(row) {
   return Boolean(row.last) && row.stage !== "未開始";
 }
 
-/** 以試算表當地日期為起點，月底沒有同日就落在目標月份的最後一天。 */
-function constructionGanttHorizon_(today) {
+/** 按日曆月移動，月底沒有同日就落在目標月份的最後一天。 */
+function constructionGanttShiftMonth_(today, offset) {
   const date = new Date(today + "T00:00:00Z");
   const day = date.getUTCDate();
   date.setUTCDate(1);
-  date.setUTCMonth(date.getUTCMonth() + 3);
+  date.setUTCMonth(date.getUTCMonth() + offset);
   const monthEnd = new Date(date.getTime());
   monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1, 0);
   date.setUTCDate(Math.min(day, monthEnd.getUTCDate()));
@@ -5160,15 +5167,33 @@ function constructionGanttAxis_(rows, today) {
       last = Math.max(last, dayOf(row.last));
     }
   });
+  const dailyStart = today ? dayOf(today) - 21 : start;
   if (today) {
-    start = Math.min(start, dayOf(today));
-    last = Math.max(last, dayOf(constructionGanttHorizon_(today)));
+    start = Math.min(start, dailyStart);
+    last = Math.max(last, dayOf(constructionGanttShiftMonth_(today, 3)));
   }
-  if (!Number.isFinite(start)) return {dates: [], width: 320};
-  const firstWeek = monday(start), weekCount = (monday(last) - firstWeek) / 7 + 1;
-  return {unit: "week", width: 68, format: "yy/mm/dd",
-    dates: Array.from({length: weekCount}, function(_, i) { return firstWeek + i * 7; }),
-    index: function(key) { return Math.floor((dayOf(key) - firstWeek) / 7); }};
+  if (!Number.isFinite(start)) return {dates: [], pastWeeks: 0, dayCount: 0, weekWidth: 320, dayWidth: 18};
+
+  const dailyEnd = today ? dayOf(constructionGanttShiftMonth_(today, 1)) : last;
+  const firstWeek = monday(start);
+  const futureStart = dailyEnd + 1;
+  const firstFutureWeek = monday(futureStart);
+  const pastWeeks = start < dailyStart ? Math.ceil((dailyStart - firstWeek) / 7) : 0;
+  const dayCount = dailyEnd - dailyStart + 1;
+  const dates = [];
+  for (let index = 0; index < pastWeeks; index++) dates.push(firstWeek + index * 7);
+  for (let day = dailyStart; day <= dailyEnd; day++) dates.push(day);
+  // 第一個未來週可能只涵蓋部分日期，表頭顯示該欄實際的起點。
+  for (let week = firstFutureWeek; Math.max(futureStart, week) <= last; week += 7) {
+    dates.push(Math.max(futureStart, week));
+  }
+  return {dates: dates, pastWeeks: pastWeeks, dayCount: dayCount, weekWidth: 68, dayWidth: 18,
+    index: function(key) {
+      const day = dayOf(key);
+      if (day < dailyStart) return Math.floor((day - firstWeek) / 7);
+      if (day <= dailyEnd) return pastWeeks + day - dailyStart;
+      return pastWeeks + dayCount + Math.floor((day - firstFutureWeek) / 7);
+    }};
 }
 
 /** 以工作表 ID 登記管理權；僅名稱以「甘特圖_」開頭不算 GCGL 分頁。 */
@@ -5200,7 +5225,7 @@ function constructionGanttScopeSignature_(overview, overviewIds) {
     .map(function(byte) { return (byte & 255).toString(16).padStart(2, "0"); }).join("");
 }
 
-/** 每日總覽更新不重畫甘特圖；只有案場新增、移出同步或更名才重排。 */
+/** 只重建總覽時，案場新增、移出同步或更名才連動甘特圖。 */
 function constructionGanttScopeChanged_(spreadsheet, overview, overviewIds) {
   if (!Array.isArray(overview)) return false;
   const key = GCGL_CONFIG.constructionGanttScopePropertyPrefix + spreadsheet.getId();
@@ -5213,7 +5238,7 @@ function renderConstructionGanttReports_(spreadsheet, table, values, logs, overv
   const timezone = spreadsheet.getSpreadsheetTimeZone() || Session.getScriptTimeZone();
   const today = Utilities.formatDate(new Date(), timezone, "yyyy-MM-dd");
   const bySite = new Map();
-  constructionGanttRows_(table, values, logs, timezone).forEach(function(row) {
+  constructionGanttRows_(table, values, logs, timezone, today).forEach(function(row) {
     if (!bySite.has(row.site)) bySite.set(row.site, []);
     bySite.get(row.site).push(row);
   });
@@ -5271,96 +5296,130 @@ function renderConstructionGanttReports_(spreadsheet, table, values, logs, overv
 
 function renderConstructionGanttReport_(spreadsheet, targetSheet, site, rows, today, emptyLabel) {
   const axis = constructionGanttAxis_(rows, today);
-  function labelWidth(text) {
-    return Math.max(1, Math.ceil((Array.from(text).length * 14 + 14) / axis.width));
-  }
+  const todayColumn = axis.index(today);
+  const dailyEndColumn = axis.pastWeeks + axis.dayCount;
+  function isDailyColumn(index) { return index >= axis.pastWeeks && index < dailyEndColumn; }
   let span = Math.max(1, axis.dates.length);
   const plans = rows.map(function(row) {
-    const needed = labelWidth(row.label);
-    if (!constructionGanttHasBar_(row)) return {row: row, needed: needed};
-    const start = axis.index(row.first || row.last), end = axis.index(row.last);
-    // 色條末格保留註解；放不下的標籤統一緊接色條右側。
-    const inline = needed <= Math.max(1, end - start);
-    const labelStart = inline ? start : end + 1;
-    const labelCount = inline ? needed : Math.min(needed, Math.ceil(360 / axis.width));
-    span = Math.max(span, labelStart + labelCount);
-    return {row: row, start: start, end: end, labelStart: labelStart, labelCount: labelCount};
+    const end = constructionGanttHasBar_(row) ? axis.index(row.last) : -1;
+    const labelColumn = end + 1;
+    let width = Array.from(row.label).length * 14 + 14;
+    let column = labelColumn;
+    while (width > 0) {
+      width -= isDailyColumn(column) ? axis.dayWidth : axis.weekWidth;
+      column++;
+    }
+    span = Math.max(span, column);
+    return {row: row, end: end, labelColumn: labelColumn};
   });
-  const timeline = 2, lastColumn = span + 1;
-  const display = [], fills = [], notes = [], merges = [];
-  function addLane(vendor) {
-    display.push([/^[=']/.test(vendor) ? "'" + vendor : vendor].concat(Array(span).fill("")));
+  const monthRow = 2, dateRow = 3, firstDataRow = dateRow + 1;
+  const timeline = 3, lastColumn = timeline + span - 1;
+  const display = [], fills = [], notes = [];
+  // 施工廠商和工項都是使用者輸入的文字，避免開頭的 '=' 被試算表當成公式。
+  function cellText(text) { return /^[=']/.test(text) ? "'" + text : text; }
+  function addLane(vendor, task = "") {
+    display.push([cellText(vendor), cellText(task)].concat(Array(span).fill("")));
     fills.push(Array(span).fill(GCGL_REPORT_COLORS.firstRow));
     notes.push(Array(span).fill(null));
     return display.length - 1;
   }
-  function addLabel(lane, start, count, text) {
-    // setValues 會把開頭的 '=' 當公式；工項／廠商名稱都是使用者文字。
-    display[lane][timeline - 1 + start] = /^[=']/.test(text) ? "'" + text : text;
-    if (count > 1) merges.push([lane + 5, timeline + start, count]);
+  function addLabel(lane, start, text) {
+    display[lane][timeline - 1 + start] = cellText(text);
   }
   let shownUndated = false;
   plans.forEach(function(plan) {
     const row = plan.row;
-    const hasBar = plan.end !== undefined;
+    const hasBar = plan.end >= 0;
     if (!hasBar && !shownUndated && axis.dates.length) {
       const heading = addLane("");
-      const undatedTitle = reportText_("未開始／無記錄日期");
-      addLabel(heading, 0, Math.min(span, labelWidth(undatedTitle)), undatedTitle);
+      addLabel(heading, 0, reportText_("未開始／無記錄日期"));
       fills[heading].fill(GCGL_REPORT_COLORS.secondRow);
       shownUndated = true;
     }
-    const lane = addLane(row.vendor);
-    if (!hasBar) {
-      addLabel(lane, 0, Math.min(span, plan.needed), row.label);
-      return;
+    const lane = addLane(row.vendor, row.task);
+    if (hasBar) {
+      const start = axis.index(row.first || row.last), end = plan.end;
+      const fill = row.stage === "已完成" ? GCGL_REPORT_COLORS.lightRed3 : GCGL_REPORT_COLORS.titleFill;
+      fills[lane].fill(fill, start, end + 1);
+      notes[lane][end] = row.first ? [row.first, row.last].filter(function(date, i, pair) {
+        return i === 0 || date !== pair[0];
+      }).map(constructionGanttShortDate_).join(" – ")
+        : reportText_("僅能確認最後記錄日") + " " + constructionGanttShortDate_(row.last);
     }
-    const start = plan.start, end = plan.end;
-    const fill = row.stage === "已完成" ? GCGL_REPORT_COLORS.lightRed3 : GCGL_REPORT_COLORS.titleFill;
-    fills[lane].fill(fill, start, end + 1);
-    notes[lane][end] = row.first ? [row.first, row.last].filter(function(date, i, pair) {
-      return i === 0 || date !== pair[0];
-    }).map(constructionGanttShortDate_).join(" – ")
-      : reportText_("僅能確認最後記錄日") + " " + constructionGanttShortDate_(row.last);
-    addLabel(lane, plan.labelStart, plan.labelCount, row.label);
+    addLabel(lane, plan.labelColumn, row.label);
+    if (row.hasToday) fills[lane][todayColumn] = GCGL_REPORT_COLORS.ganttToday;
   });
   if (!display.length) {
-    addLabel(addLane(""), 0, Math.min(span, labelWidth(emptyLabel)), emptyLabel);
+    addLabel(addLane(""), 0, emptyLabel);
   }
   const sheet = prepareReportSheet_(spreadsheet, targetSheet.getName());
-  ensureSheetSize_(sheet, 4 + display.length, lastColumn);
-  const grid = sheet.getRange(4, 1, display.length + 1, lastColumn);
+  const lastRow = dateRow + display.length;
+  ensureSheetSize_(sheet, lastRow, lastColumn);
+  const grid = sheet.getRange(dateRow, 1, display.length + 1, lastColumn);
   clearUnusedReportBorders_(sheet, [grid]);
   grid.setBorder(true, true, true, true, false, true, GCGL_REPORT_COLORS.border, SpreadsheetApp.BorderStyle.SOLID)
     .setFontFamily("Arial").setFontSize(10).setFontColor(GCGL_REPORT_COLORS.text)
     .setVerticalAlignment("middle").setWrap(true);
-  sheet.getRange(5, 1, display.length, 1).setNumberFormat("@");
-  sheet.getRange(5, timeline, display.length, span).setNumberFormat("@").setBackgrounds(fills).setNotes(notes);
-  sheet.getRange(5, 1, display.length, lastColumn).setValues(display);
-  merges.forEach(function(item) { sheet.getRange(item[0], item[1], 1, item[2]).merge(); });
-  const header = sheet.getRange(4, 1, 1, lastColumn);
+  sheet.getRange(firstDataRow, 1, display.length, timeline - 1).setNumberFormat("@");
+  sheet.getRange(firstDataRow, timeline, display.length, span).setNumberFormat("@")
+    .setHorizontalAlignment("left").setBackgrounds(fills).setNotes(notes);
+  sheet.getRange(firstDataRow, 1, display.length, lastColumn).setValues(display);
+  mergeReportLabelColumn_(sheet, display, 0, [], firstDataRow);
+  mergeReportLabelColumn_(sheet, display, 1, [0], firstDataRow);
+  sheet.getRange(dateRow, 2, display.length + 1, 1)
+    .setBorder(null, true, null, true, null, null, GCGL_REPORT_COLORS.border, SpreadsheetApp.BorderStyle.SOLID);
+  const header = sheet.getRange(dateRow, 1, 1, lastColumn);
   header.setBackground(GCGL_REPORT_COLORS.navy).setFontColor(GCGL_REPORT_COLORS.headerText)
     .setFontWeight("bold").setHorizontalAlignment("center");
-  sheet.getRange(4, 1).setValue(reportText_("施工廠商"));
-  sheet.setColumnWidths(timeline, span, axis.width);
-  sheet.setColumnWidth(1, 180);
+  sheet.getRange(dateRow, 1, 1, timeline - 1).setValues([["施工廠商", "工項"].map(reportText_)]);
+  const columnGroups = [[axis.pastWeeks, axis.weekWidth], [axis.dayCount, axis.dayWidth],
+    [span - dailyEndColumn, axis.weekWidth]];
+  let nextColumn = timeline;
+  columnGroups.forEach(function(group) {
+    const [count, width] = group;
+    if (count) sheet.setColumnWidths(nextColumn, count, width);
+    nextColumn += count;
+  });
+  const labelWidths = [180, 90];
+  sheet.setColumnWidth(1, labelWidths[0]);
+  sheet.setColumnWidth(2, labelWidths[1]);
   sheet.getRange(1, 1).setNumberFormat("@")
-    .setValue(/^[=']/.test(site) ? "'" + site : site).setFontWeight("bold").setBackground(GCGL_REPORT_COLORS.titleFill);
+    .setValue(cellText(site)).setFontWeight("bold").setBackground(GCGL_REPORT_COLORS.titleFill);
+  sheet.getRange(monthRow, 1, 1, sheet.getMaxColumns()).setBackground(GCGL_REPORT_COLORS.lightOrange3);
   if (axis.dates.length) {
-    sheet.getRange(4, timeline, 1, axis.dates.length).setNumberFormat(axis.format)
+    const dates = axis.dates.map(function(day) { return new Date(day * 86400000); });
+    const dateColors = dates.map(function(date) {
+      const weekday = date.getUTCDay();
+      return weekday === 0 || weekday === 6 ? GCGL_REPORT_COLORS.darkRedBerry1 : GCGL_REPORT_COLORS.navy;
+    });
+    sheet.getRange(dateRow, timeline, 1, axis.dates.length).setNumberFormat("yy/mm/dd")
+      .setFontSize(8).setWrap(false).setBackgrounds([dateColors])
       .setValues([axis.dates.map(function(day) { return day + 25569; })]); // 1970-01-01 in Sheets
-    const description = sheet.getRange(2, timeline, 1, Math.min(span, Math.ceil(360 / axis.width)));
-    if (description.getNumColumns() > 1) description.merge();
-    description.setValue(reportText_("首次至最後一次施工記錄")).setWrap(true);
-    sheet.getRange(3, timeline).setValue(reportText_("每週"));
+    sheet.getRange(dateRow, timeline + axis.pastWeeks, 1, axis.dayCount).setNumberFormat("d");
+
+    sheet.getRange(monthRow, 1).setValue(reportText_("月份"));
+    sheet.getRange(monthRow, timeline, 1, axis.dates.length).setFontFamily("Arial")
+      .setFontSize(8).setHorizontalAlignment("center").setWrap(false).setNumberFormat("@");
+    const months = dates.map(function(date) { return date.toISOString().slice(0, 7); });
+    for (let start = 0, end = 1; end <= months.length; end++) {
+      if (end < months.length && months[end] === months[start]) continue;
+      const count = end - start;
+      const range = sheet.getRange(monthRow, timeline + start, 1, count);
+      if (count > 1) range.merge();
+      const month = months[start];
+      range.setValue(count === 1 && isDailyColumn(start) ? month.slice(5) : month.slice(2).replace("-", "/"));
+      start = end;
+    }
   } else {
-    sheet.getRange(4, timeline).setValue(reportText_(rows.some(function(row) { return row.last; })
-      ? "未開始／無記錄日期" : "無記錄日期"));
+    sheet.getRange(dateRow, timeline).setValue(reportText_(rows.some(function(row) { return row.last; })
+      ? "未開始／無記錄日期" : "無記錄日期")).setHorizontalAlignment("left");
   }
-  fitReportRowHeights_(sheet, 4, display.length + 1, 1, lastColumn, false);
-  sheet.setFrozenRows(4);
+  sheet.setRowHeight(dateRow, 28);
+  fitReportRowHeights_(sheet, firstDataRow, display.length, 1, timeline - 1, false, false, labelWidths);
+  sheet.getRange(dateRow, timeline, display.length + 1, span).setWrapStrategy(SpreadsheetApp.WrapStrategy.OVERFLOW);
+  sheet.setFrozenRows(dateRow);
   sheet.setFrozenColumns(1);
-  finishGeneratedReportGrid_(sheet, 4 + display.length, lastColumn);
+  finishGeneratedReportGrid_(sheet, lastRow, lastColumn);
 }
 
 /** 擁有者仍可確認警告後編輯；以 App 同步來源還原，不保留表格端的獨立完成狀態。 */
@@ -6040,7 +6099,7 @@ function writeReportTableBlock_(sheet, startRow, startColumn, headers, rows, wid
 }
 
 /** 最終欄寬／合併完成後逐列適高；呼叫範圍只含 GCGL 的可見表格，不含總覽或隱藏識別欄。 */
-function fitReportRowHeights_(sheet, startRow, rowCount, startColumn, columnCount, useNative, hasHeader) {
+function fitReportRowHeights_(sheet, startRow, rowCount, startColumn, columnCount, useNative, hasHeader, columnWidths) {
   if (rowCount < 1 || columnCount < 1) return;
   useNative = useNative !== false;
   hasHeader = hasHeader !== false;
@@ -6060,7 +6119,7 @@ function fitReportRowHeights_(sheet, startRow, rowCount, startColumn, columnCoun
   }
   // Google 不會可靠地自動量測合併格；按實際欄寬／字級估算，且不讓隱藏長識別碼撐高。
   const values = range.getDisplayValues(), fonts = range.getFontSizes();
-  const widths = Array.from({length: columnCount}, function(_, index) {
+  const widths = columnWidths || Array.from({length: columnCount}, function(_, index) {
     return sheet.getColumnWidth(startColumn + index);
   });
   const covered = new Set(), affectedRows = new Set(), constraints = [];
